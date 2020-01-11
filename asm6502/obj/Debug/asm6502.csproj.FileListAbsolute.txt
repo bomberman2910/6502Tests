@@ -1,0 +1,7 @@
+/home/marcelhasse/Projects/6502Tests/asm6502/bin/Debug/asm6502.exe
+/home/marcelhasse/Projects/6502Tests/asm6502/bin/Debug/asm6502.pdb
+/home/marcelhasse/Projects/6502Tests/asm6502/bin/Debug/lib6502.dll
+/home/marcelhasse/Projects/6502Tests/asm6502/bin/Debug/lib6502.pdb
+/home/marcelhasse/Projects/6502Tests/asm6502/obj/Debug/asm6502.csproj.CopyComplete
+/home/marcelhasse/Projects/6502Tests/asm6502/obj/Debug/asm6502.exe
+/home/marcelhasse/Projects/6502Tests/asm6502/obj/Debug/asm6502.pdb
