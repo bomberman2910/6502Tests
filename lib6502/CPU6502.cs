@@ -14,7 +14,7 @@ namespace lib6502
         public byte A { get; set; }
         public byte X { get; set; }
         public byte Y { get; set; }
-        public byte SR { get; set; } //N V - - D I Z C
+        public byte SR { get; set; } //N V B - D I Z C
 
         public bool NMI { get; set; }
         public bool IRQ { get; set; }

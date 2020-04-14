@@ -29,9 +29,9 @@ namespace Emu6502
         {
             mainbus = new Bus();
             ram = new RAM(4096, 0x0000);
-            byte[] bbytes = File.ReadAllBytes("textscreen01.bin");
-            for (int pc = 0; pc < bbytes.Length; pc++)
-                ram.SetData(bbytes[pc], (ushort)(0x0200 + pc));
+            // byte[] bbytes = File.ReadAllBytes("textscreen01.bin");
+            for (int pc = 0; pc < ASMRoutines.TestRoutine().Length; pc++)
+                ram.SetData(ASMRoutines.TestRoutine()[pc], (ushort)(0x0200 + pc));
             mainbus.Devices.Add(ram);
 
             rom = new ROM(4096, 0xF000);
@@ -43,9 +43,6 @@ namespace Emu6502
                 initrom[0x001C + i] = ASMRoutines.CharDspRoutine()[i];
             rom.SetMemory(initrom);
             mainbus.Devices.Add(rom);
-
-            charrom = new ROM(1024, 0xEC00);
-            charrom.SetMemory(File.ReadAllBytes("apple1.vid"));
 
             screen = new Screen(160, 120, 0xD000);
             screen.Reset();
@@ -65,8 +62,8 @@ namespace Emu6502
         {
             ushort currentpage = 0x0000;
 
-            ResizeMac(140, 40);
-            //Console.SetWindowSize(140, 43);
+            //ResizeMac(140, 40);
+            Console.SetWindowSize(140, 43);
             Console.Clear();
 
             Reset();
