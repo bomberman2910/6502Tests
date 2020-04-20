@@ -24,6 +24,7 @@ namespace Emu6502
         private static Screen screen;
         private static ROM charrom;
         private static TextScreen textscreen;
+        private static PIA pia;
 
         private static void Reset()
         {
@@ -51,6 +52,9 @@ namespace Emu6502
             textscreen = new TextScreen(40, 25, 0xD004);
             textscreen.Reset();
             mainbus.Devices.Add(textscreen);
+            
+            pia = new PIA(cpu, 0xD010);
+            mainbus.Devices.Add(pia);
 
             cpu = new CPU6502(mainbus)
             {
