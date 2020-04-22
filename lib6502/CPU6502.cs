@@ -1,12 +1,11 @@
 ﻿using System;
+// ReSharper disable InconsistentNaming
 
 namespace lib6502
 {
     public class CPU6502
     {
-
-        //will not (yet) support decimal mode
-
+        
         public int Cycles { get; set; }
 
         public ushort PC { get; set; }
@@ -59,6 +58,15 @@ namespace lib6502
 
             Cycles = 0;
         }
+
+        public static byte BCDToDec(byte bcd) => (byte) (10 * (bcd >> 4) + (bcd & 0xF));
+
+        public static byte DecToBCD(byte dec)
+        {
+            if (dec > 99) dec = (byte) (dec % 100);
+            return (byte) (((dec / 10) << 4) | (dec % 10));
+        }
+
         #endregion
 
         #region Status register methods
@@ -92,17 +100,18 @@ namespace lib6502
         #endregion
 
         #region Interrupt routines
-        public void HandleIRQ()
+        private void HandleIRQ()
         {
             PushToStack(BitConverter.GetBytes(PC)[1]);
             PushToStack(BitConverter.GetBytes(PC)[0]);
             PushToStack(SR);
             SetFlag(EFlag.IRQ, true);
+            IRQ = false;
             PC = (ushort)((Bus.GetData(0xFFFF) << 8) + Bus.GetData(0xFFFE));
             Cycles = 8;
         }
 
-        public void HandleNMI()
+        private void HandleNMI()
         {
             PushToStack(BitConverter.GetBytes(PC)[1]);
             PushToStack(BitConverter.GetBytes(PC)[0]);
@@ -154,12 +163,24 @@ namespace lib6502
         #region Operations with multiple addressing modes (except store operations)
         private void ADC(byte value)
         {
-            short sum = (short)(A + value + (CheckFlag(EFlag.CAR) ? 1 : 0));
-            SetFlag(EFlag.OVR, (CheckBit(A, 7) == CheckBit(value, 7)) && (CheckBit(A, 7) != CheckBit((byte)sum, 7)));
-            SetFlag(EFlag.CAR, (sum > 255) || (sum < 0));
-            SetFlag(EFlag.NEG, CheckBit((byte)sum, 7));
-            SetFlag(EFlag.ZER, sum == 0);
-            A = (byte)sum;
+            if (!CheckFlag(EFlag.DEC))
+            {
+                short sum = (short) (A + value + (CheckFlag(EFlag.CAR) ? 1 : 0));
+                SetFlag(EFlag.OVR, (CheckBit(A, 7) == CheckBit(value, 7)) && (CheckBit(A, 7) != CheckBit((byte)sum, 7)));
+                SetFlag(EFlag.CAR, (sum > 255) || (sum < 0));
+                SetFlag(EFlag.NEG, CheckBit((byte) sum, 7));
+                SetFlag(EFlag.ZER, (byte) sum == 0);
+                A = (byte) sum;
+            }
+            else
+            {
+                short sum = (short) (BCDToDec(A) + BCDToDec(value) + (CheckFlag(EFlag.CAR) ? 1 : 0));
+                SetFlag(EFlag.CAR, sum > 99);
+                SetFlag(EFlag.ZER, DecToBCD((byte) sum) == 0);
+                SetFlag(EFlag.OVR, TestForOverflow(sum));
+                SetFlag(EFlag.NEG, CheckBit(DecToBCD((byte) sum), 7));
+                A = DecToBCD((byte) sum);
+            }
         }
 
         private void AND(byte value)
@@ -337,16 +358,40 @@ namespace lib6502
             return value;
         }
 
-        private void SBC(byte value) => ADC((byte)~value);
+        private void SBC(byte value)
+        {
+            if (CheckFlag(EFlag.DEC))
+            {
+                short sum = (short) (BCDToDec(A) - BCDToDec(value) - (CheckFlag(EFlag.CAR) ? 0 : 1));
+                if (sum < 0)
+                {
+                    sum = (short) (100 + sum);
+                    SetFlag(EFlag.CAR, false);
+                }
+                else
+                {
+                    SetFlag(EFlag.CAR, true);
+                }
+                SetFlag(EFlag.OVR, TestForOverflow(sum));
+                SetFlag(EFlag.NEG, CheckBit(DecToBCD((byte) sum), 7));
+                SetFlag(EFlag.ZER, DecToBCD((byte) sum) == 0);
+                A = DecToBCD((byte) sum);
+            }
+            else
+            {
+                ADC((byte) ~value);
+            }
+        }
+
         #endregion
 
         #region Execution
         public void Exec()
         {
-            if (!CheckFlag(EFlag.IRQ) && IRQ)
-                HandleIRQ();
-            if (NMI)
+            if (Cycles == 0 && NMI)
                 HandleNMI();
+            if (Cycles == 0 && !CheckFlag(EFlag.IRQ) && IRQ)
+                HandleIRQ();
             if (Cycles == 0)
             {
                 byte instruction = Bus.GetData(PC);

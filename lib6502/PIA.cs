@@ -65,7 +65,7 @@ namespace lib6502
             {
                 if (_outa) return;
                 _rdya = value;
-                if (IRQ) _cpu.HandleIRQ();
+                if (IRQ) _cpu.IRQ = true;
             }
         }
 
@@ -78,7 +78,7 @@ namespace lib6502
             {
                 if (_outb) return;
                 _rdyb = value;
-                if (IRQ) _cpu.HandleIRQ();
+                if (IRQ) _cpu.IRQ = true;
             }
         }
 

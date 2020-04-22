@@ -1,43 +1,49 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using lib6502;
+using System.Diagnostics.CodeAnalysis;
+using System.Runtime.InteropServices;
 
 namespace asm6502
 {
     public class CodeLine : IEquatable<CodeLine>
     {
 
+        [SuppressMessage("ReSharper", "InconsistentNaming")]
         public enum Linetype
         {
             CODE,
             COMMENT,
             DIRECTIVE,
             LABEL,
-            UNDEFINIED
+            VARIABLE,
+            UNDEFINED
         }
 
         public Linetype Type { get; }
         public bool ContainsComment { get; }
-        public string Line { get; }
+        public string Line { get; set; }
 
         public CodeLine(string line)
         {
-            Line = line;
-            if (line.StartsWith("\t;"))
+            Line = line.Trim();
+            if (Line.StartsWith(";"))
                 Type = Linetype.COMMENT;
-            else if (line.StartsWith("\t."))
+            else if (Line.StartsWith("."))
                 Type = Linetype.DIRECTIVE;
-            else if (line.StartsWith("\t"))
-                Type = Linetype.CODE;
-            else if (line.EndsWith(":"))
+            else if (Line.Contains(":"))
                 Type = Linetype.LABEL;
+            else if ((Line.Contains("=") && !line.Contains(";")) || (Line.Contains(";") && Line.Split(';')[0].Contains("=")))
+                Type = Linetype.VARIABLE;
             else
-                Type = Linetype.UNDEFINIED;
-            ContainsComment = line.Contains(";");
+                Type = Linetype.CODE;
+            ContainsComment = Line.Contains(";");
         }
+
+        /// <summary>
+        /// Returns the CodeLine without comments and leading or trailing whitespaces
+        /// </summary>
+        /// <returns>clean CodeLine</returns>
+        public string Clean() => ContainsComment ? Line.Split(';')[0].Trim() : Line.Trim();
 
         #region Implements
         public override string ToString() => Line;
@@ -57,7 +63,6 @@ namespace asm6502
         {
             var hashCode = 261734979;
             hashCode = hashCode * -1521134295 + Type.GetHashCode();
-            hashCode = hashCode * -1521134295 + EqualityComparer<string>.Default.GetHashCode(Line);
             return hashCode;
         }
 

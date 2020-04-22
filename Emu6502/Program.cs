@@ -30,9 +30,9 @@ namespace Emu6502
         {
             mainbus = new Bus();
             ram = new RAM(4096, 0x0000);
-            // byte[] bbytes = File.ReadAllBytes("textscreen01.bin");
-            for (int pc = 0; pc < ASMRoutines.TestRoutine().Length; pc++)
-                ram.SetData(ASMRoutines.TestRoutine()[pc], (ushort)(0x0200 + pc));
+            byte[] bbytes = File.ReadAllBytes("dectest.bin");
+            for (int pc = 0; pc < bbytes.Length; pc++)
+               ram.SetData(bbytes[pc], (ushort)(0x0200 + pc));
             mainbus.Devices.Add(ram);
 
             rom = new ROM(4096, 0xF000);
