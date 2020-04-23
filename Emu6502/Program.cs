@@ -91,6 +91,8 @@ namespace Emu6502
                 command = Console.ReadLine().ToLower();
                 ushort usvalue;
                 byte bvalue;
+                string[] setsplit;
+                var success = false;
                 switch (command)
                 {
                     case var cmd when cmd.Equals("q"):
@@ -101,94 +103,109 @@ namespace Emu6502
                     case var cmd when cmd.Equals("rc"):
                         cpu.Reset();
                         break;
-                    case var cmd when cmd.StartsWith("a ", StringComparison.Ordinal):
-                        if (byte.TryParse(cmd.Split(' ')[1], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out bvalue))
-                            cpu.A = bvalue;
-                        else
+                    case var cmd when cmd.StartsWith("reg"):
+                        setsplit = cmd.Split(' ');
+                        if (setsplit.Length != 3)
                         {
                             Console.WriteLine("Fehlerhafte Eingabe!");
                             _ = Console.ReadKey(true);
+                            break;
                         }
+                        if (setsplit[1].Equals("a"))
+                        {
+                            success = byte.TryParse(setsplit[2], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out bvalue);
+                            if (success) cpu.A = bvalue;
+                        }
+                        else if (setsplit[1].Equals("x"))
+                        {
+                            success = byte.TryParse(setsplit[2], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out bvalue);
+                            if(success) cpu.X = bvalue;
+                        }
+                        else if (setsplit[1].Equals("y"))
+                        {
+                            success = byte.TryParse(setsplit[2], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out bvalue);
+                            if(success) cpu.Y = bvalue;
+                        }
+                        else if (setsplit[1].Equals("sr"))
+                        {
+                            success = byte.TryParse(setsplit[2], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out bvalue);
+                            if(success) cpu.SR = bvalue;
+                        }
+                        else if (setsplit[1].Equals("sp"))
+                        {
+                            success = byte.TryParse(setsplit[2], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out bvalue);
+                            if (success) cpu.SP = bvalue;
+                        }
+                        else if (setsplit[1].Equals("pc"))
+                        {
+                            success = ushort.TryParse(setsplit[2], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out usvalue);
+                            if(success) cpu.PC = usvalue;
+                        }
+
+                        if (success) break;
+                        Console.WriteLine("Fehlerhafte Eingabe!");
+                        _ = Console.ReadKey(true);
                         break;
-                    case var cmd when cmd.StartsWith("x ", StringComparison.Ordinal):
-                        if (byte.TryParse(cmd.Split(' ')[1], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out bvalue))
-                            cpu.X = bvalue;
-                        else
+                    case var cmd when cmd.StartsWith("mem"):
+                        setsplit = cmd.Split(new[] {' '}, 4);
+                        if (setsplit.Length < 3 || setsplit.Length > 4)
                         {
                             Console.WriteLine("Fehlerhafte Eingabe!");
                             _ = Console.ReadKey(true);
+                            break;
                         }
-                        break;
-                    case var cmd when cmd.StartsWith("y ", StringComparison.Ordinal):
-                        if (byte.TryParse(cmd.Split(' ')[1], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out bvalue))
-                            cpu.Y = bvalue;
-                        else
+                        if (setsplit[1].Equals("disp"))
                         {
-                            Console.WriteLine("Fehlerhafte Eingabe!");
-                            _ = Console.ReadKey(true);
+                            success = ushort.TryParse(setsplit[2], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out usvalue);
+                            if (success) currentpage = usvalue;
                         }
-                        break;
-                    case var cmd when cmd.StartsWith("sr ", StringComparison.Ordinal):
-                        if (byte.TryParse(cmd.Split(' ')[1], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out bvalue))
-                            cpu.SR = bvalue;
-                        else
+                        else if (setsplit[1].Equals("set"))
                         {
-                            Console.WriteLine("Fehlerhafte Eingabe!");
-                            _ = Console.ReadKey(true);
-                        }
-                        break;
-                    case var cmd when cmd.StartsWith("sp ", StringComparison.Ordinal):
-                        if (byte.TryParse(cmd.Split(' ')[1], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out bvalue))
-                            cpu.SP = bvalue;
-                        else
-                        {
-                            Console.WriteLine("Fehlerhafte Eingabe!");
-                            _ = Console.ReadKey(true);
-                        }
-                        break;
-                    case var cmd when cmd.StartsWith("pc ", StringComparison.Ordinal):
-                        if (ushort.TryParse(cmd.Split(' ')[1], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out usvalue))
-                            cpu.PC = usvalue;
-                        else
-                        {
-                            Console.WriteLine("Fehlerhafte Eingabe!");
-                            _ = Console.ReadKey(true);
-                        }
-                        break;
-                    case var cmd when cmd.StartsWith("d ", StringComparison.Ordinal):
-                        if (ushort.TryParse(cmd.Split(' ')[1], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out usvalue))
-                            currentpage = usvalue;
-                        else
-                        {
-                            Console.WriteLine("Fehlerhafte Eingabe!");
-                            _ = Console.ReadKey(true);
-                        }
-                        break;
-                    case var cmd when cmd.StartsWith("m ", StringComparison.Ordinal):
-                        if (ushort.TryParse(cmd.Split(' ')[1], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out usvalue))
-                        {
-                            string[] sbytes = Console.ReadLine().Split(' ');
-                            byte[] bbytes = new byte[sbytes.Length];
-                            byte tmp = 0;
-                            foreach (string s in sbytes)
+                            success = ushort.TryParse(setsplit[2], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out usvalue);
+                            if (!success) break;
+                            var sbytes = setsplit[3].Split(' ');
+                            var bbytes = new byte[sbytes.Length];
+                            for (var i = 0; i < sbytes.Length; i++)
                             {
-                                if (!byte.TryParse(s, out tmp))
-                                {
-                                    Console.WriteLine("Fehlerhafte Eingabe!");
-                                    _ = Console.ReadKey(true);
-                                    break;
-                                }
+                                success = byte.TryParse(sbytes[i], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out bbytes[i]);
+                                if (!success) break;
                             }
-                            for (int i = 0; i < sbytes.Length; i++)
-                                bbytes[i] = DisASM6502.HexStringToByte(sbytes[i]);
-                            for (int mem = 0; mem < bbytes.Length; mem++)
+                            for (var mem = 0; mem < bbytes.Length; mem++)
                                 ram.SetData(bbytes[mem], (ushort)(usvalue + mem));
                         }
-                        else
+                        if (success) break;
+                        Console.WriteLine("Fehlerhafte Eingabe!");
+                        _ = Console.ReadKey(true);
+                        break;
+                    case var cmd when cmd.StartsWith("bp"):
+                        setsplit = cmd.Split(new[] {' '}, 3);
+                        if (setsplit.Length < 2 || setsplit.Length > 3)
                         {
                             Console.WriteLine("Fehlerhafte Eingabe!");
                             _ = Console.ReadKey(true);
+                            break;
                         }
+
+                        if (setsplit[1].Equals("list"))
+                        {
+                            foreach (var brk in breakpoints)
+                                Console.Write(brk.ToString("X4") + ", ");
+                            _ = Console.ReadKey(true);
+                            success = true;
+                        }
+                        else if (setsplit[1].Equals("add"))
+                        {
+                            success = ushort.TryParse(setsplit[2], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out usvalue);
+                            if (success) breakpoints.Add(usvalue);
+                        }
+                        else if (setsplit[1].Equals("rm"))
+                        {
+                            success = ushort.TryParse(setsplit[2], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out usvalue) && breakpoints.Contains(usvalue);
+                            if (success) breakpoints.Remove(usvalue);
+                        }
+                        if (success) break;
+                        Console.WriteLine("Fehlerhafte Eingabe!");
+                        _ = Console.ReadKey(true);
                         break;
                     case var cmd when cmd.Equals(""):
                         cpu.Step();
@@ -196,48 +213,22 @@ namespace Emu6502
                         screen.Screenshot();
                         textscreen.Screenshot();
                         break;
-                    case var cmd when cmd.Equals("bl"):
-                        foreach (ushort brk in breakpoints)
-                            Console.Write(brk.ToString("X4") + ", ");
-                        _ = Console.ReadKey(true);
-                        break;
-                    case var cmd when cmd.StartsWith("ba ", StringComparison.Ordinal):
-                        if (ushort.TryParse(cmd.Split(' ')[1], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out usvalue))
-                            breakpoints.Add(usvalue);
-                        else
-                        {
-                            Console.WriteLine("Fehlerhafte Eingabe!");
-                            _ = Console.ReadKey(true);
-                        }
-                        break;
-                    case var cmd when cmd.StartsWith("br", StringComparison.Ordinal):
-                        if (ushort.TryParse(cmd.Split(' ')[1], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out usvalue) && breakpoints.Contains(usvalue))
-                            breakpoints.Remove(usvalue);
-                        else
-                        {
-                            Console.WriteLine("Fehlerhafte Eingabe!");
-                            _ = Console.ReadKey(true);
-                        }
-                        break;
                     case var cmd when cmd.Equals("r"):
                         if (breakpoints.Count == 0)
-                        {
                             do
                             {
                                 cpu.Step();
                                 mainbus.PerformClockActions();
-                            } while (!(mainbus.GetData(cpu.PC) == 0x00));
-                        }
+                            } while (mainbus.GetData(cpu.PC) != 0x00);
                         else
-                        {
                             do
                             {
                                 cpu.Step();
                                 mainbus.PerformClockActions();
-                            } while (!breakpoints.Contains(cpu.PC) && !(mainbus.GetData(cpu.PC) == 0x00));
-                        }
-                        screen.Screenshot();
-                        textscreen.Screenshot();
+                            } while (!breakpoints.Contains(cpu.PC) && mainbus.GetData(cpu.PC) != 0x00);
+
+                        screen?.Screenshot();
+                        textscreen?.Screenshot();
                         break;
                     default:
                         Console.WriteLine("Fehlerhafte Eingabe!");
