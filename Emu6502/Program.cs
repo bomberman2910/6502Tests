@@ -84,8 +84,8 @@ namespace Emu6502
 
             Reset();
 
-            string command = "";
-            List<ushort> breakpoints = new List<ushort>();
+            var command = "";
+            var breakpoints = new List<ushort>();
 
             while (!command.ToLower().Equals("q"))
             {
@@ -97,8 +97,9 @@ namespace Emu6502
                     Console.Write("$" + line.ToString("X4") + ":");
                     for (var pc = line; pc < (line + 32); pc++)
                     {
+                        Console.Write(" ");
                         if (pc == cpu.PC) InvertColors();
-                        Console.Write(" $" + mainbus.GetData((ushort)pc).ToString("X2"));
+                        Console.Write($"${mainbus.GetData((ushort) pc):X2}");
                         if (pc == cpu.PC) InvertColors();
                     }
 
@@ -114,12 +115,6 @@ namespace Emu6502
                 switch (command)
                 {
                     case var cmd when cmd.Equals("q"):
-                        break;
-                    case var cmd when cmd.Equals("ra"):
-                        Reset();
-                        break;
-                    case var cmd when cmd.Equals("rc"):
-                        cpu.Reset();
                         break;
                     case var cmd when cmd.StartsWith("reg"):
                         setsplit = cmd.Split(' ');
@@ -221,6 +216,84 @@ namespace Emu6502
                             success = ushort.TryParse(setsplit[2], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out usvalue) && breakpoints.Contains(usvalue);
                             if (success) breakpoints.Remove(usvalue);
                         }
+                        if (success) break;
+                        Console.WriteLine("Fehlerhafte Eingabe!");
+                        _ = Console.ReadKey(true);
+                        break;
+                    case var cmd when cmd.StartsWith("pia"):
+                        setsplit = cmd.Split(new[] {' '}, 4);
+                        if (setsplit.Length < 3 || setsplit.Length > 4)
+                        {
+                            Console.WriteLine("Fehlerhafte Eingabe!");
+                            _ = Console.ReadKey(true);
+                            break;
+                        }
+
+                        if (setsplit[1].Equals("get"))
+                        {
+                            if (setsplit[2].Equals("a"))
+                            {
+                                Console.WriteLine($"Port A value: {pia.PORTA}");
+                                success = true;
+                            }
+                            else if (setsplit[2].Equals("b"))
+                            {
+                                Console.WriteLine($"Port B value: {pia.PORTB}");
+                                success = true;
+                            }
+                            else
+                                success = false;
+                        } 
+                        else if (setsplit[1].Equals("set"))
+                        {
+                            if (setsplit[2].Equals("a"))
+                            {
+                                success = byte.TryParse(setsplit[3], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out bvalue);
+                                if (success) pia.PORTA = bvalue;
+                            }
+                            else if (setsplit[2].Equals("b"))
+                            {
+                                success = byte.TryParse(setsplit[3], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out bvalue);
+                                if (success) pia.PORTB = bvalue;
+                            }
+                            else if (setsplit[2].Equals("irq"))
+                            {
+                                pia.IRQ = !pia.IRQ;
+                                success = true;
+                            }
+                            else
+                                success = false;
+                        }
+                        if (success) break;
+                        Console.WriteLine("Fehlerhafte Eingabe!");
+                        _ = Console.ReadKey(true);
+                        break;
+                    case var cmd when cmd.StartsWith("reset"):
+                        setsplit = cmd.Split(new[] {' '}, 2);
+                        if (setsplit.Length != 2)
+                        {
+                            Console.WriteLine("Fehlerhafte Eingabe!");
+                            _ = Console.ReadKey(true);
+                            break;
+                        }
+
+                        if (setsplit[1].Equals("all"))
+                        {
+                            Reset();
+                            success = true;
+                        }
+                        else if (setsplit[1].Equals("cpu"))
+                        {
+                            cpu.Reset();
+                            success = true;
+                        }
+                        else if (setsplit[1].Equals("pia"))
+                        {
+                            pia.Reset();
+                            success = true;
+                        }
+                        else
+                            success = false;
                         if (success) break;
                         Console.WriteLine("Fehlerhafte Eingabe!");
                         _ = Console.ReadKey(true);

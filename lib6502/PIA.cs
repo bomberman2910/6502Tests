@@ -21,7 +21,7 @@ namespace lib6502
             {
                 if (_outa) return;
                 _porta = value;
-                _rdya = true;
+                RDYA = true;
             }
         }
 
@@ -38,7 +38,7 @@ namespace lib6502
             {
                 if (_outb) return;
                 _portb = value;
-                _rdyb = true;
+                RDYB = true;
             }
         }
 
@@ -65,7 +65,7 @@ namespace lib6502
             {
                 if (_outa) return;
                 _rdya = value;
-                if (IRQ) _cpu.IRQ = true;
+                if (IRQ) _cpu.IRQ = _rdya;
             }
         }
 
@@ -78,7 +78,7 @@ namespace lib6502
             {
                 if (_outb) return;
                 _rdyb = value;
-                if (IRQ) _cpu.IRQ = true;
+                if (IRQ) _cpu.IRQ = _rdyb;
             }
         }
 
@@ -148,6 +148,18 @@ namespace lib6502
             return;
         }
 
-        public override string ToString() => $"PORTA: {_porta}\tPORTB: {_portb}\tOUTA: {_outa}\tOUTB: {_outb}\tRDYA: {_rdya}\tRDYB: {_rdyb}";
+        public void Reset()
+        {
+            _porta = 0;
+            _portb = 0;
+            _outa = false;
+            _outb = false;
+            _rdya = false;
+            _rdyb = false;
+            IRQ = false;
+        }
+
+        public override string ToString() =>
+            $"PORTA: ${_porta:X2}\tPORTB: ${_portb:X2}\tOUTA: {_outa}\tOUTB: {_outb}\tRDYA: {_rdya}\tRDYB: {_rdyb}\tInterrupting {(IRQ ? "enabled" : "disabled")}";
     }
 }
