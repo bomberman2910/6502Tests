@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using lib6502;
 
@@ -16,6 +17,13 @@ namespace Emu6502
         {
             system(@"printf '\e[8;" + height.ToString() + ";" + width.ToString() + "t'");
         }
+        
+        public static void InvertColors()
+        {
+            var temp = Console.ForegroundColor;
+            Console.ForegroundColor = Console.BackgroundColor;
+            Console.BackgroundColor = temp;
+        }
 
         private static CPU6502 cpu;
         private static Bus mainbus;
@@ -25,22 +33,23 @@ namespace Emu6502
         private static ROM charrom;
         private static TextScreen textscreen;
         private static PIA pia;
+        private static SIA sia;
 
         private static void Reset()
         {
             mainbus = new Bus();
             ram = new RAM(4096, 0x0000);
-            byte[] bbytes = File.ReadAllBytes("dectest.bin");
-            for (int pc = 0; pc < bbytes.Length; pc++)
-               ram.SetData(bbytes[pc], (ushort)(0x0200 + pc));
+            //var bbytes = File.ReadAllBytes("dectest.bin");
+            //for (var pc = 0; pc < bbytes.Length; pc++)
+            //   ram.SetData(bbytes[pc], (ushort)(0x0200 + pc));
             mainbus.Devices.Add(ram);
 
             rom = new ROM(4096, 0xF000);
-            byte[] initrom = new byte[4096];
+            var initrom = new byte[4096];
             initrom[0x0FFD] = 0x02;
-            for (int i = 0; i < ASMRoutines.PixelDspRoutine().Length; i++)
+            for (var i = 0; i < ASMRoutines.PixelDspRoutine().Length; i++)
                 initrom[0x0000 + i] = ASMRoutines.PixelDspRoutine()[i];
-            for (int i = 0; i < ASMRoutines.CharDspRoutine().Length; i++)
+            for (var i = 0; i < ASMRoutines.CharDspRoutine().Length; i++)
                 initrom[0x001C + i] = ASMRoutines.CharDspRoutine()[i];
             rom.SetMemory(initrom);
             mainbus.Devices.Add(rom);
@@ -49,12 +58,15 @@ namespace Emu6502
             screen.Reset();
             mainbus.Devices.Add(screen);
 
-            textscreen = new TextScreen(40, 25, 0xD004);
+            textscreen = new TextScreen(40, 25, 0xD010);
             textscreen.Reset();
             mainbus.Devices.Add(textscreen);
             
-            pia = new PIA(cpu, 0xD010);
+            pia = new PIA(cpu, 0xD020);
             mainbus.Devices.Add(pia);
+            
+            sia = new SIA(0xD030);
+            mainbus.Devices.Add(sia);
 
             cpu = new CPU6502(mainbus)
             {
@@ -66,8 +78,8 @@ namespace Emu6502
         {
             ushort currentpage = 0x0000;
 
-            //ResizeMac(140, 40);
-            Console.SetWindowSize(140, 43);
+            ResizeMac(140, 40);
+            //Console.SetWindowSize(140, 43);
             Console.Clear();
 
             Reset();
@@ -78,12 +90,18 @@ namespace Emu6502
             while (!command.ToLower().Equals("q"))
             {
                 Console.Clear();
-                Console.WriteLine(cpu);
+                Console.WriteLine($"{cpu}\n");
+                Console.WriteLine($"{pia}\n");
                 for (int line = currentpage; line < ((currentpage + 0x0400) > 65536 ? 65536 : (currentpage + 0x0400)); line += 32)
                 {
                     Console.Write("$" + line.ToString("X4") + ":");
-                    for (int pc = line; pc < (line + 32); pc++)
+                    for (var pc = line; pc < (line + 32); pc++)
+                    {
+                        if (pc == cpu.PC) InvertColors();
                         Console.Write(" $" + mainbus.GetData((ushort)pc).ToString("X2"));
+                        if (pc == cpu.PC) InvertColors();
+                    }
+
                     Console.WriteLine();
                 }
                 Console.WriteLine();

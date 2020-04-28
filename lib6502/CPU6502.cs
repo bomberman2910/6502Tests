@@ -36,14 +36,14 @@ namespace lib6502
         }
 
         #region Helpers
-        public static bool CheckBit(byte value, int bit) => ((value << (7 - bit)) >> 7) == 1;
+        public static bool CheckBit(byte value, int bit) => (value & (1 << bit)) == (1 << bit);
 
         public override string ToString()
         {
             string output = "";
             output += $"A: ${A.ToString("X2")}\tX: ${X.ToString("X2")}\tY: ${Y.ToString("X2")}\tSP: ${SP.ToString("X2")}\tPC: ${PC.ToString("X4")}";
             output += $"\tSR: {(CheckFlag(EFlag.NEG) ? "N" : "-")}{(CheckFlag(EFlag.OVR) ? "O" : "-")}{(CheckFlag(EFlag.BRK) ? "B" : "-")}-{(CheckFlag(EFlag.DEC) ? "D" : "-")}{(CheckFlag(EFlag.IRQ) ? "I" : "-")}{(CheckFlag(EFlag.ZER) ? "Z" : "-")}{(CheckFlag(EFlag.CAR) ? "C" : "-")}\t";
-            output += $"Instruction: {DisASM6502.Disassemble(new byte[] { Bus.GetData(PC), Bus.GetData((ushort)(PC + 1)), Bus.GetData((ushort)(PC + 2)) }, 0)}\n\n";
+            output += $"Instruction: {DisASM6502.Disassemble(new byte[] { Bus.GetData(PC), Bus.GetData((ushort)(PC + 1)), Bus.GetData((ushort)(PC + 2)) }, 0)}";
             return output;
         }
 

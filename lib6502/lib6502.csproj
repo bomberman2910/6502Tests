@@ -41,6 +41,7 @@
     <Compile Include="RAM.cs" />
     <Compile Include="ROM.cs" />
     <Compile Include="PIA.cs" />
+    <Compile Include="SIA.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
 </Project>

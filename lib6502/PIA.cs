@@ -93,32 +93,32 @@ namespace lib6502
             switch (address)
             {
                 case var add when add == start:        //PORTA
-                    if (OUTA)
+                    if (_outa)
                     {
-                        PORTA = data;
-                        RDYA = true;
+                        _porta = data;
+                        _rdya = true;
                     }
                     break;
                 case var add when add == start + 1:    //PORTB
-                    if (OUTB)
+                    if (_outb)
                     {
-                        PORTB = data;
-                        RDYB = true;
+                        _portb = data;
+                        _rdyb = true;
                     }
                     break;
                 case var add when add == start + 2:    //DDR (- - - - - - OUTB OUTA)
-                    OUTA = CPU6502.CheckBit(data, 0);
-                    OUTB = CPU6502.CheckBit(data, 1);
+                    _outa = CPU6502.CheckBit(data, 0);
+                    _outb = CPU6502.CheckBit(data, 1);
                     break;
                 case var add when add == start + 3:    //RDYR (- - - - - - RDYB RDYA)
-                    if (OUTA && CPU6502.CheckBit(data, 0))
-                        RDYA = true;
-                    else if (OUTA && !CPU6502.CheckBit(data, 0))
-                        RDYA = false;
-                    if (OUTB && CPU6502.CheckBit(data, 1))
-                        RDYB = true;
-                    else if (OUTB && !CPU6502.CheckBit(data, 1))
-                        RDYB = false;
+                    if (_outa && CPU6502.CheckBit(data, 0))
+                        _rdya = true;
+                    else if (_outa && !CPU6502.CheckBit(data, 0))
+                        _rdya = false;
+                    if (_outb && CPU6502.CheckBit(data, 1))
+                        _rdyb = true;
+                    else if (_outb && !CPU6502.CheckBit(data, 1))
+                        _rdyb = false;
                     break;
             }
         }
@@ -147,5 +147,7 @@ namespace lib6502
         {
             return;
         }
+
+        public override string ToString() => $"PORTA: {_porta}\tPORTB: {_portb}\tOUTA: {_outa}\tOUTB: {_outb}\tRDYA: {_rdya}\tRDYB: {_rdyb}";
     }
 }
