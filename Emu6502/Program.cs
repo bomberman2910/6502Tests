@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using lib6502;
@@ -291,6 +292,61 @@ namespace Emu6502
                         {
                             pia.Reset();
                             success = true;
+                        }
+                        else
+                            success = false;
+                        if (success) break;
+                        Console.WriteLine("Fehlerhafte Eingabe!");
+                        _ = Console.ReadKey(true);
+                        break;
+                    case var cmd when cmd.StartsWith("asm"):
+                        setsplit = cmd.Split(new[] {' '}, 3);
+                        if (setsplit.Length < 3)
+                        {
+                            Console.WriteLine("Fehlerhafte Eingabe!");
+                            _ = Console.ReadKey(true);
+                            break;
+                        }
+
+                        if (setsplit[1].Equals("line"))
+                        {
+                            try
+                            {
+                                var bytes = ASM6502.Assemble(setsplit[2]);
+                                for (var i = 0; i < bytes.Length; i++)
+                                    mainbus.SetData(bytes[i], (ushort) (cpu.PC + i));
+                                success = true;
+                            }
+                            catch
+                            {
+                                success = false;
+                            }
+                        }
+                        else if (setsplit[1].Equals("file"))
+                        {
+                            string lines;
+                            try
+                            {
+                                lines = File.ReadAllText(setsplit[2]);
+                            }
+                            catch
+                            {
+                                Console.WriteLine("Datei nicht gefunden!");
+                                _ = Console.ReadKey(true);
+                                break;
+                            }
+
+                            try
+                            {
+                                var bytes = ASM6502.Assemble(lines);
+                                for (var i = 0; i < bytes.Length; i++)
+                                    mainbus.SetData(bytes[i], (ushort) (cpu.PC + i));
+                                success = true;
+                            }
+                            catch
+                            {
+                                success = false;
+                            }
                         }
                         else
                             success = false;
