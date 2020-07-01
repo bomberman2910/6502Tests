@@ -12,6 +12,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Apple1_CharROM_Display", "A
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Terminal6502", "Terminal6502\Terminal6502.csproj", "{3A463112-5F92-4D02-8C04-9BC903BE3FA2}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "asm6502v2", "asm6502v2\asm6502v2.csproj", "{C0A67B7B-100C-4AE7-9975-60207070BD9F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -82,6 +84,18 @@ Global
 		{3A463112-5F92-4D02-8C04-9BC903BE3FA2}.Release|iPhone.Build.0 = Release|Any CPU
 		{3A463112-5F92-4D02-8C04-9BC903BE3FA2}.Release|iPhoneSimulator.ActiveCfg = Release|Any CPU
 		{3A463112-5F92-4D02-8C04-9BC903BE3FA2}.Release|iPhoneSimulator.Build.0 = Release|Any CPU
+		{C0A67B7B-100C-4AE7-9975-60207070BD9F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C0A67B7B-100C-4AE7-9975-60207070BD9F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C0A67B7B-100C-4AE7-9975-60207070BD9F}.Debug|iPhone.ActiveCfg = Debug|Any CPU
+		{C0A67B7B-100C-4AE7-9975-60207070BD9F}.Debug|iPhone.Build.0 = Debug|Any CPU
+		{C0A67B7B-100C-4AE7-9975-60207070BD9F}.Debug|iPhoneSimulator.ActiveCfg = Debug|Any CPU
+		{C0A67B7B-100C-4AE7-9975-60207070BD9F}.Debug|iPhoneSimulator.Build.0 = Debug|Any CPU
+		{C0A67B7B-100C-4AE7-9975-60207070BD9F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C0A67B7B-100C-4AE7-9975-60207070BD9F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C0A67B7B-100C-4AE7-9975-60207070BD9F}.Release|iPhone.ActiveCfg = Release|Any CPU
+		{C0A67B7B-100C-4AE7-9975-60207070BD9F}.Release|iPhone.Build.0 = Release|Any CPU
+		{C0A67B7B-100C-4AE7-9975-60207070BD9F}.Release|iPhoneSimulator.ActiveCfg = Release|Any CPU
+		{C0A67B7B-100C-4AE7-9975-60207070BD9F}.Release|iPhoneSimulator.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
