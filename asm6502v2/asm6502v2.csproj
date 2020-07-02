@@ -11,6 +11,7 @@
         <AssemblyName>asm6502v2</AssemblyName>
         <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
         <FileAlignment>512</FileAlignment>
+        <LangVersion>8</LangVersion>
     </PropertyGroup>
     <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
         <PlatformTarget>AnyCPU</PlatformTarget>
@@ -39,6 +40,8 @@
     </ItemGroup>
     <ItemGroup>
         <Compile Include="CodeLine.cs" />
+        <Compile Include="InvalidOperandException.cs" />
+        <Compile Include="Label.cs" />
         <Compile Include="Program.cs" />
         <Compile Include="Properties\AssemblyInfo.cs" />
     </ItemGroup>
