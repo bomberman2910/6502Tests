@@ -1,7 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
+using System.Linq;
 using System.Linq.Expressions;
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace asm6502v2
@@ -10,7 +14,8 @@ namespace asm6502v2
     {
         // Content
         public string Content { get; }
-        public string CleanContent => Content.TrimEnd(';');
+        public string CleanContent => ContainsComment ? Content.Split(';')[0] : Content;
+
         // Comment
         public bool ContainsComment => Content.Contains(";");
         public bool IsCommentLine => Content.StartsWith(";");
@@ -37,10 +42,55 @@ namespace asm6502v2
             if (Label != null)
             {
                 if (Content.Split(':')[1].Trim().StartsWith("."))
+                { 
+                    var dataPart = Content.Split(':')[1].Trim().ToLower();
+                    var dataType = Regex.Split(dataPart, @"\s")[0].Trim();
+                    var dataContent = Regex.Split(dataPart, @"\s")[1].Trim();
+
+                    if (Regex.IsMatch(dataPart, @"\.byte\s\$[0-9a-f][0-9a-f]"))
+                    {
+                        if (!byte.TryParse(dataContent.TrimStart('$'), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var data))
+                            throw new InvalidOperandException(line, number);
+                        Data = new[] { data };
+                    }
+                    else if (dataType.Equals(".word"))
+                    {
+                        var data = new byte[2];
+
+                        if (Regex.IsMatch(dataPart, @"\.word\t\$[0-9a-f][0-9a-f]\s\$[0-9a-f][0-9a-f]"))
+                        {
+                            if (!byte.TryParse(dataContent.Split(' ')[0].TrimStart('$'), NumberStyles.HexNumber,
+                                CultureInfo.InvariantCulture, out data[0]))
+                                throw new InvalidOperandException(line, number);
+                            if (!byte.TryParse(dataContent.Split(' ')[1].TrimStart('$'), NumberStyles.HexNumber,
+                                CultureInfo.InvariantCulture, out data[1]))
+                                throw new InvalidOperandException(line, number);
+                        }
+                        else if (Regex.IsMatch(dataPart, @"\.word\t\$[0-9a-f][0-9a-f][0-9a-f][0-9a-f]"))
+                        {
+                            if (!ushort.TryParse(dataContent.TrimStart('$'), NumberStyles.HexNumber,
+                                CultureInfo.InvariantCulture, out var word))
+                                throw new InvalidOperandException(line, number);
+                            data = BitConverter.GetBytes(word);
+                        }
+                        else
+                            throw new InvalidOperandException(line, number);
+
+                        Data = data;
+                    }
+                    else if (dataType.Equals(".ascii"))
+                    {
+                        Data = Encoding.ASCII.GetBytes(dataContent.Trim('"'));
+                    }
+                    else if (dataType.Equals(".asciiz"))
+                    {
+                        Data = Encoding.ASCII.GetBytes(dataContent.Trim('"'));
+                        Data = Data.Append((byte)0x00).ToArray();
+                    }
+                }
+                else
                 {
-                    var dataPart = Content.Split(':')[1].Trim();
-                    var dataType = dataPart.Split('\t')[0];
-                    
+                    Data = null;
                 }
             }
         }
@@ -63,7 +113,7 @@ namespace asm6502v2
             }
 
             var bytes = new List<byte>();
-            var splittedline = Content.Split(new[] {' '}, 2);
+            var splittedline = CleanContent.Split(new[] {' '}, 2);
             var opcode = splittedline[0];
             byte op1;
             ushort addr;
@@ -597,6 +647,8 @@ namespace asm6502v2
             return bytes.ToArray();
         }
 
+        #region Checking Addressing Modes
+        
         /// <summary>
         /// Checks if a given string contains an absolute address
         /// </summary>
@@ -776,6 +828,8 @@ namespace asm6502v2
             address = 0;
             return false;
         }
+        
+        #endregion
 
         public string ToString(StringType stringType)
         {
@@ -784,8 +838,8 @@ namespace asm6502v2
                 case StringType.Standard:
                     return Content;
                 case StringType.LinkerMode:
-                    var bytesString = "";
-                    if (GetBytes() != null)
+                    var bytesString = "        ";
+                    if (!IsCommentLine && !IsDataLine && GetBytes() != null)
                     {
                         if (GetBytes().Length == 1)
                             bytesString = $"{GetBytes()[0]:X2}      ";
