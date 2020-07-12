@@ -23,7 +23,7 @@ namespace asm6502v2
                 Console.WriteLine($".ContainsLabel:\t\t{line.ContainsLabel}");
                 Console.WriteLine(line.Label == null
                     ? ".Label:\t\t\tNo Label available"
-                    : $".Label:\t\t\t{line.Label.ToString()}");
+                    : $".Label:\t\t\t{line.Label?.Name}");
                 Console.WriteLine($".IsDataLine:\t\t{line.IsDataLine.ToString()}");
                 if (line.Data == null)
                 {
@@ -39,7 +39,7 @@ namespace asm6502v2
 
                 Console.ReadKey(true);
                 number++;
-                address += (ushort)line.GetBytes().Length;
+                address += (ushort)line.Length;
             }
             
         }

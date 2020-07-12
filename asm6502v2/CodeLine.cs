@@ -4,6 +4,7 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Linq.Expressions;
+using System.Runtime.Remoting;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -29,8 +30,12 @@ namespace asm6502v2
         public int Number { get; }
         public ushort Address { get; }
 
+        public int Length => IsCommentLine ? 0 : IsDataLine ? Data.Length : GetBytes().Length;
+
         public CodeLine(string line, int number, ushort address)
         {
+            var spacesplitter = new Regex(@"\s");
+
             Content = line.Trim();
             Number = number;
             Address = address;
@@ -42,16 +47,17 @@ namespace asm6502v2
             if (Label != null)
             {
                 if (Content.Split(':')[1].Trim().StartsWith("."))
-                { 
+                {
                     var dataPart = Content.Split(':')[1].Trim().ToLower();
-                    var dataType = Regex.Split(dataPart, @"\s")[0].Trim();
-                    var dataContent = Regex.Split(dataPart, @"\s")[1].Trim();
+                    var dataType = spacesplitter.Split(dataPart, 2)[0].Trim();
+                    var dataContent = spacesplitter.Split(dataPart, 2)[1].Trim();
 
                     if (Regex.IsMatch(dataPart, @"\.byte\s\$[0-9a-f][0-9a-f]"))
                     {
-                        if (!byte.TryParse(dataContent.TrimStart('$'), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var data))
+                        if (!byte.TryParse(dataContent.TrimStart('$'), NumberStyles.HexNumber,
+                            CultureInfo.InvariantCulture, out var data))
                             throw new InvalidOperandException(line, number);
-                        Data = new[] { data };
+                        Data = new[] {data};
                     }
                     else if (dataType.Equals(".word"))
                     {
@@ -79,13 +85,11 @@ namespace asm6502v2
                         Data = data;
                     }
                     else if (dataType.Equals(".ascii"))
-                    {
                         Data = Encoding.ASCII.GetBytes(dataContent.Trim('"'));
-                    }
                     else if (dataType.Equals(".asciiz"))
                     {
                         Data = Encoding.ASCII.GetBytes(dataContent.Trim('"'));
-                        Data = Data.Append((byte)0x00).ToArray();
+                        Data = Data.Append((byte) 0x00).ToArray();
                     }
                 }
                 else
@@ -93,6 +97,9 @@ namespace asm6502v2
                     Data = null;
                 }
             }
+            var operand = spacesplitter.Split(CleanContent, 2)[1];
+            if (!(operand.StartsWith("$") || operand.StartsWith("#")))
+                Label = new Label() {Name = operand, Location = 0x0000};
         }
 
         public byte[] GetBytes()
@@ -114,6 +121,8 @@ namespace asm6502v2
 
             var bytes = new List<byte>();
             var splittedline = CleanContent.Split(new[] {' '}, 2);
+            if (!(splittedline[1].StartsWith("$") || splittedline[1].StartsWith("#")))
+                return null;
             var opcode = splittedline[0];
             byte op1;
             ushort addr;
@@ -851,7 +860,7 @@ namespace asm6502v2
                     else
                         bytesString = "        ";
 
-                    return $"{Number}  {bytesString}\t{Content}";
+                    return $"{Number} ${Address:X4}: {bytesString}\t{Content}";
                 case StringType.WithLineNumber:
                     return $"{Number}  {Content}";
                 case StringType.Clean:
