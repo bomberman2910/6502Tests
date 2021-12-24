@@ -1,20 +1,20 @@
-﻿using System;
-namespace lib6502
+﻿namespace lib6502
 {
     public abstract class Device
     {
-        public Device(ushort range_start, ushort range_end)
+        protected readonly ushort End;
+
+        protected readonly byte[] Memory;
+        protected readonly ushort Start;
+
+        protected Device(ushort rangeStart, ushort rangeEnd)
         {
-            start = range_start;
-            end = range_end;
-            memory = new byte[end - start + 1];
+            Start = rangeStart;
+            End = rangeEnd;
+            Memory = new byte[End - Start + 1];
         }
 
-        protected readonly byte[] memory;
-        protected readonly ushort start;
-        protected readonly ushort end;
-
-        public bool Request(ushort address) => (address >= start) && (address <= end);
+        public bool Request(ushort address) => address >= Start && address <= End;
 
         public abstract void SetData(byte data, ushort address);
 

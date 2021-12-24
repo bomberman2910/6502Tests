@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Diagnostics;
 
 namespace asm6502v2
 {
@@ -18,30 +17,26 @@ namespace asm6502v2
                 Console.WriteLine("========================================");
                 Console.WriteLine($".Content:\t\t{line.Content}");
                 Console.WriteLine($".CleanContent:\t\t{line.CleanContent}");
-                Console.WriteLine($".ContainsComment:\t{line.ContainsComment.ToString()}");
-                Console.WriteLine($".IsCommentLine:\t\t{line.IsCommentLine.ToString()}");
+                Console.WriteLine($".ContainsComment:\t{line.ContainsComment}");
+                Console.WriteLine($".IsCommentLine:\t\t{line.IsCommentLine}");
                 Console.WriteLine($".ContainsLabel:\t\t{line.ContainsLabel}");
-                Console.WriteLine(line.Label == null
-                    ? ".Label:\t\t\tNo Label available"
-                    : $".Label:\t\t\t{line.Label?.Name}");
-                Console.WriteLine($".IsDataLine:\t\t{line.IsDataLine.ToString()}");
+                Console.WriteLine(line.Label == null ? ".Label:\t\t\tNo Label available" : $".Label:\t\t\t{line.Label?.Name}");
+                Console.WriteLine($".IsDataLine:\t\t{line.IsDataLine}");
                 if (line.Data == null)
-                {
                     Console.WriteLine(".Data:\t\t\tNo Data available");
-                }
                 else
                 {
                     Console.Write($".Data:\t\t\t[ {line.Data[0]:X2}");
                     for (var i = 1; i < line.Data.Length; i++)
                         Console.Write($", {line.Data[i]:X2}");
                 }
+
                 Console.WriteLine(" ]");
 
                 Console.ReadKey(true);
                 number++;
-                address += (ushort)line.Length;
+                address += (ushort) line.Length;
             }
-            
         }
     }
 }

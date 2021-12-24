@@ -1,5 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
+using System.Linq;
 
 namespace lib6502
 {
@@ -12,27 +12,22 @@ namespace lib6502
 
         public List<Device> Devices { get; }
 
-        public byte GetData(ushort address)
-        {
-            foreach (Device d in Devices)
-                if (d.Request(address))
-                    return d.GetData(address);
-            return 0x00;
-        }
+        public byte GetData(ushort address) => Devices.Where(d => d.Request(address)).Select(d => d.GetData(address)).FirstOrDefault();
 
         public void SetData(byte data, ushort address)
         {
-            foreach (Device d in Devices)
-                if (d.Request(address))
-                {
-                    d.SetData(data, address);
-                    return;
-                }
+            foreach (var d in Devices)
+            {
+                if (!d.Request(address))
+                    continue;
+                d.SetData(data, address);
+                return;
+            }
         }
 
         public void PerformClockActions()
         {
-            foreach (Device d in Devices)
+            foreach (var d in Devices)
                 d.PerformClockAction();
         }
     }

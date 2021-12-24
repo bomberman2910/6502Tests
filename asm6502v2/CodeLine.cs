@@ -1,11 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.IO;
 using System.Linq;
-using System.Linq.Expressions;
-using System.Runtime.Remoting;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -13,24 +9,13 @@ namespace asm6502v2
 {
     public class CodeLine
     {
-        // Content
-        public string Content { get; }
-        public string CleanContent => ContainsComment ? Content.Split(';')[0] : Content;
-
-        // Comment
-        public bool ContainsComment => Content.Contains(";");
-        public bool IsCommentLine => Content.StartsWith(";");
-        // Label
-        public bool ContainsLabel => Label != null;
-        public Label? Label { get; }
-        // Data
-        public bool IsDataLine => Data != null;
-        public byte[] Data { get; }
-        // Other
-        public int Number { get; }
-        public ushort Address { get; }
-
-        public int Length => IsCommentLine ? 0 : IsDataLine ? Data.Length : GetBytes().Length;
+        public enum StringType
+        {
+            Standard,
+            LinkerMode,
+            WithLineNumber,
+            Clean
+        }
 
         public CodeLine(string line, int number, ushort address)
         {
@@ -39,8 +24,7 @@ namespace asm6502v2
             Content = line.Trim();
             Number = number;
             Address = address;
-            if ((!(ContainsComment || IsCommentLine) && Content.Contains(":")) ||
-                ((ContainsComment && !IsCommentLine) && Content.Split(';')[0].Contains(":")))
+            if (!(ContainsComment || IsCommentLine) && Content.Contains(":") || ContainsComment && !IsCommentLine && Content.Split(';')[0].Contains(":"))
                 Label = new Label {Name = Content.Split(':')[0], Location = address};
             else
                 Label = null;
@@ -54,57 +38,104 @@ namespace asm6502v2
 
                     if (Regex.IsMatch(dataPart, @"\.byte\s\$[0-9a-f][0-9a-f]"))
                     {
-                        if (!byte.TryParse(dataContent.TrimStart('$'), NumberStyles.HexNumber,
-                            CultureInfo.InvariantCulture, out var data))
+                        if (!byte.TryParse(dataContent.TrimStart('$'), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var data))
                             throw new InvalidOperandException(line, number);
                         Data = new[] {data};
                     }
-                    else if (dataType.Equals(".word"))
+                    else
                     {
-                        var data = new byte[2];
-
-                        if (Regex.IsMatch(dataPart, @"\.word\t\$[0-9a-f][0-9a-f]\s\$[0-9a-f][0-9a-f]"))
+                        switch (dataType)
                         {
-                            if (!byte.TryParse(dataContent.Split(' ')[0].TrimStart('$'), NumberStyles.HexNumber,
-                                CultureInfo.InvariantCulture, out data[0]))
-                                throw new InvalidOperandException(line, number);
-                            if (!byte.TryParse(dataContent.Split(' ')[1].TrimStart('$'), NumberStyles.HexNumber,
-                                CultureInfo.InvariantCulture, out data[1]))
-                                throw new InvalidOperandException(line, number);
-                        }
-                        else if (Regex.IsMatch(dataPart, @"\.word\t\$[0-9a-f][0-9a-f][0-9a-f][0-9a-f]"))
-                        {
-                            if (!ushort.TryParse(dataContent.TrimStart('$'), NumberStyles.HexNumber,
-                                CultureInfo.InvariantCulture, out var word))
-                                throw new InvalidOperandException(line, number);
-                            data = BitConverter.GetBytes(word);
-                        }
-                        else
-                            throw new InvalidOperandException(line, number);
+                            case ".word":
+                            {
+                                var data = new byte[2];
 
-                        Data = data;
-                    }
-                    else if (dataType.Equals(".ascii"))
-                        Data = Encoding.ASCII.GetBytes(dataContent.Trim('"'));
-                    else if (dataType.Equals(".asciiz"))
-                    {
-                        Data = Encoding.ASCII.GetBytes(dataContent.Trim('"'));
-                        Data = Data.Append((byte) 0x00).ToArray();
+                                if (Regex.IsMatch(dataPart, @"\.word\t\$[0-9a-f][0-9a-f]\s\$[0-9a-f][0-9a-f]"))
+                                {
+                                    if (!byte.TryParse(dataContent.Split(' ')[0].TrimStart('$'), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out data[0]))
+                                        throw new InvalidOperandException(line, number);
+                                    if (!byte.TryParse(dataContent.Split(' ')[1].TrimStart('$'), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out data[1]))
+                                        throw new InvalidOperandException(line, number);
+                                }
+                                else if (Regex.IsMatch(dataPart, @"\.word\t\$[0-9a-f][0-9a-f][0-9a-f][0-9a-f]"))
+                                {
+                                    if (!ushort.TryParse(dataContent.TrimStart('$'), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var word))
+                                        throw new InvalidOperandException(line, number);
+                                    data = BitConverter.GetBytes(word);
+                                }
+                                else
+                                    throw new InvalidOperandException(line, number);
+
+                                Data = data;
+                                break;
+                            }
+                            case ".ascii":
+                                Data = Encoding.ASCII.GetBytes(dataContent.Trim('"'));
+                                break;
+                            case ".asciiz":
+                                Data = Encoding.ASCII.GetBytes(dataContent.Trim('"'));
+                                Data = Data.Append((byte) 0x00).ToArray();
+                                break;
+                        }
                     }
                 }
                 else
-                {
                     Data = null;
-                }
             }
+
             var operand = spacesplitter.Split(CleanContent, 2)[1];
             if (!(operand.StartsWith("$") || operand.StartsWith("#")))
-                Label = new Label() {Name = operand, Location = 0x0000};
+                Label = new Label {Name = operand, Location = 0x0000};
+        }
+
+        // Content
+        public string Content { get; }
+
+        public string CleanContent
+        {
+            get { return ContainsComment ? Content.Split(';')[0] : Content; }
+        }
+
+        // Comment
+        public bool ContainsComment
+        {
+            get { return Content.Contains(";"); }
+        }
+
+        public bool IsCommentLine
+        {
+            get { return Content.StartsWith(";"); }
+        }
+
+        // Label
+        public bool ContainsLabel
+        {
+            get { return Label != null; }
+        }
+
+        public Label? Label { get; }
+
+        // Data
+        public bool IsDataLine
+        {
+            get { return Data != null; }
+        }
+
+        public byte[] Data { get; }
+
+        // Other
+        public int Number { get; }
+        public ushort Address { get; }
+
+        public int Length
+        {
+            get { return IsCommentLine ? 0 : IsDataLine ? Data.Length : GetBytes().Length; }
         }
 
         public byte[] GetBytes()
         {
-            if (IsCommentLine) return null;
+            if (IsCommentLine)
+                return null;
             if (ContainsLabel)
             {
                 if (Content.Split(':')[1].Contains(";"))
@@ -136,14 +167,11 @@ namespace asm6502v2
                     else if (CheckZPX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0x75, op1});
                     else if (CheckAbs(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x6D, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x6D, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsX(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x7D, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x7D, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsY(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x79, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x79, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckIndX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0x61, op1});
                     else if (CheckIndY(splittedline[1], out op1))
@@ -159,14 +187,11 @@ namespace asm6502v2
                     else if (CheckZPX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0x35, op1});
                     else if (CheckAbs(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x2D, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x2D, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsX(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x3D, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x3D, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsY(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x39, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x39, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckIndX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0x21, op1});
                     else if (CheckIndY(splittedline[1], out op1))
@@ -182,38 +207,30 @@ namespace asm6502v2
                     else if (CheckZPX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0x16, op1});
                     else if (CheckAbs(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x0E, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x0E, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsX(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x1E, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x1E, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else
                         throw new InvalidOperandException(CleanContent, Number);
                     break;
                 case "BCC":
-                    if ((splittedline[1].Length > 3) || !splittedline[1].StartsWith("$", StringComparison.Ordinal))
+                    if (splittedline[1].Length > 3 || !splittedline[1].StartsWith("$", StringComparison.Ordinal))
                         throw new InvalidOperandException(CleanContent, Number);
-                    if (!byte.TryParse(splittedline[1].Substring(1), NumberStyles.HexNumber,
-                        NumberFormatInfo.CurrentInfo,
-                        out op1))
+                    if (!byte.TryParse(splittedline[1].Substring(1), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out op1))
                         throw new InvalidOperandException(CleanContent, Number);
                     bytes.AddRange(new byte[] {0x90, op1});
                     break;
                 case "BCS":
-                    if ((splittedline[1].Length > 3) || !splittedline[1].StartsWith("$", StringComparison.Ordinal))
+                    if (splittedline[1].Length > 3 || !splittedline[1].StartsWith("$", StringComparison.Ordinal))
                         throw new InvalidOperandException(CleanContent, Number);
-                    if (!byte.TryParse(splittedline[1].Substring(1), NumberStyles.HexNumber,
-                        NumberFormatInfo.CurrentInfo,
-                        out op1))
+                    if (!byte.TryParse(splittedline[1].Substring(1), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out op1))
                         throw new InvalidOperandException(CleanContent, Number);
                     bytes.AddRange(new byte[] {0xB0, op1});
                     break;
                 case "BEQ":
-                    if ((splittedline[1].Length > 3) || !splittedline[1].StartsWith("$", StringComparison.Ordinal))
+                    if (splittedline[1].Length > 3 || !splittedline[1].StartsWith("$", StringComparison.Ordinal))
                         throw new InvalidOperandException(CleanContent, Number);
-                    if (!byte.TryParse(splittedline[1].Substring(1), NumberStyles.HexNumber,
-                        NumberFormatInfo.CurrentInfo,
-                        out op1))
+                    if (!byte.TryParse(splittedline[1].Substring(1), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out op1))
                         throw new InvalidOperandException(CleanContent, Number);
                     bytes.AddRange(new byte[] {0xF0, op1});
                     break;
@@ -221,35 +238,28 @@ namespace asm6502v2
                     if (CheckZP(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0x24, op1});
                     else if (CheckAbs(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x2C, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x2C, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else
                         throw new InvalidOperandException(CleanContent, Number);
                     break;
                 case "BMI":
-                    if ((splittedline[1].Length > 3) || !splittedline[1].StartsWith("$", StringComparison.Ordinal))
+                    if (splittedline[1].Length > 3 || !splittedline[1].StartsWith("$", StringComparison.Ordinal))
                         throw new InvalidOperandException(CleanContent, Number);
-                    if (!byte.TryParse(splittedline[1].Substring(1), NumberStyles.HexNumber,
-                        NumberFormatInfo.CurrentInfo,
-                        out op1))
+                    if (!byte.TryParse(splittedline[1].Substring(1), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out op1))
                         throw new InvalidOperandException(CleanContent, Number);
                     bytes.AddRange(new byte[] {0x30, op1});
                     break;
                 case "BNE":
-                    if ((splittedline[1].Length > 3) || !splittedline[1].StartsWith("$", StringComparison.Ordinal))
+                    if (splittedline[1].Length > 3 || !splittedline[1].StartsWith("$", StringComparison.Ordinal))
                         throw new InvalidOperandException(CleanContent, Number);
-                    if (!byte.TryParse(splittedline[1].Substring(1), NumberStyles.HexNumber,
-                        NumberFormatInfo.CurrentInfo,
-                        out op1))
+                    if (!byte.TryParse(splittedline[1].Substring(1), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out op1))
                         throw new InvalidOperandException(CleanContent, Number);
                     bytes.AddRange(new byte[] {0xD0, op1});
                     break;
                 case "BPL":
-                    if ((splittedline[1].Length > 3) || !splittedline[1].StartsWith("$", StringComparison.Ordinal))
+                    if (splittedline[1].Length > 3 || !splittedline[1].StartsWith("$", StringComparison.Ordinal))
                         throw new InvalidOperandException(CleanContent, Number);
-                    if (!byte.TryParse(splittedline[1].Substring(1), NumberStyles.HexNumber,
-                        NumberFormatInfo.CurrentInfo,
-                        out op1))
+                    if (!byte.TryParse(splittedline[1].Substring(1), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out op1))
                         throw new InvalidOperandException(CleanContent, Number);
                     bytes.AddRange(new byte[] {0x10, op1});
                     break;
@@ -257,20 +267,16 @@ namespace asm6502v2
                     bytes.Add(0x00);
                     break;
                 case "BVC":
-                    if ((splittedline[1].Length > 3) || !splittedline[1].StartsWith("$", StringComparison.Ordinal))
+                    if (splittedline[1].Length > 3 || !splittedline[1].StartsWith("$", StringComparison.Ordinal))
                         throw new InvalidOperandException(CleanContent, Number);
-                    if (!byte.TryParse(splittedline[1].Substring(1), NumberStyles.HexNumber,
-                        NumberFormatInfo.CurrentInfo,
-                        out op1))
+                    if (!byte.TryParse(splittedline[1].Substring(1), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out op1))
                         throw new InvalidOperandException(CleanContent, Number);
                     bytes.AddRange(new byte[] {0x50, op1});
                     break;
                 case "BVS":
-                    if ((splittedline[1].Length > 3) || !splittedline[1].StartsWith("$", StringComparison.Ordinal))
+                    if (splittedline[1].Length > 3 || !splittedline[1].StartsWith("$", StringComparison.Ordinal))
                         throw new InvalidOperandException(CleanContent, Number);
-                    if (!byte.TryParse(splittedline[1].Substring(1), NumberStyles.HexNumber,
-                        NumberFormatInfo.CurrentInfo,
-                        out op1))
+                    if (!byte.TryParse(splittedline[1].Substring(1), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out op1))
                         throw new InvalidOperandException(CleanContent, Number);
                     bytes.AddRange(new byte[] {0x70, op1});
                     break;
@@ -294,14 +300,11 @@ namespace asm6502v2
                     else if (CheckZPX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0xD5, op1});
                     else if (CheckAbs(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0xCD, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0xCD, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsX(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0xDD, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0xDD, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsY(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0xD9, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0xD9, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckIndX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0xC1, op1});
                     else if (CheckIndY(splittedline[1], out op1))
@@ -315,8 +318,7 @@ namespace asm6502v2
                     else if (CheckZP(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0xE4, op1});
                     else if (CheckAbs(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0xEC, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0xEC, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else
                         throw new InvalidOperandException(CleanContent, Number);
                     break;
@@ -326,8 +328,7 @@ namespace asm6502v2
                     else if (CheckZP(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0xC4, op1});
                     else if (CheckAbs(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0xCC, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0xCC, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else
                         throw new InvalidOperandException(CleanContent, Number);
                     break;
@@ -337,11 +338,9 @@ namespace asm6502v2
                     else if (CheckZPX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0xD6, op1});
                     else if (CheckAbs(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0xCE, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0xCE, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsX(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0xDE, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0xDE, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else
                         throw new InvalidOperandException(CleanContent, Number);
                     break;
@@ -359,14 +358,11 @@ namespace asm6502v2
                     else if (CheckZPX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0x55, op1});
                     else if (CheckAbs(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x4D, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x4D, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsX(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x5D, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x5D, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsY(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x59, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x59, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckIndX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0x41, op1});
                     else if (CheckIndY(splittedline[1], out op1))
@@ -380,11 +376,9 @@ namespace asm6502v2
                     else if (CheckZPX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0xF6, op1});
                     else if (CheckAbs(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0xEE, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0xEE, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsX(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0xFE, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0xFE, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else
                         throw new InvalidOperandException(CleanContent, Number);
                     break;
@@ -396,19 +390,16 @@ namespace asm6502v2
                     break;
                 case "JMP":
                     if (CheckAbs(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x4C, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x4C, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckInd(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x6C, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x6C, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else
                         throw new InvalidOperandException(CleanContent, Number);
                     break;
                 case "JSR":
                     if (!CheckAbs(splittedline[1], out addr))
                         throw new InvalidOperandException(CleanContent, Number);
-                    bytes.AddRange(new byte[]
-                        {0x20, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                    bytes.AddRange(new byte[] {0x20, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     break;
                 case "LDA":
                     if (CheckImm(splittedline[1], out op1))
@@ -418,14 +409,11 @@ namespace asm6502v2
                     else if (CheckZPX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0xB5, op1});
                     else if (CheckAbs(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0xAD, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0xAD, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsX(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0xBD, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0xBD, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsY(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0xB9, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0xB9, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckIndX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0xA1, op1});
                     else if (CheckIndY(splittedline[1], out op1))
@@ -441,11 +429,9 @@ namespace asm6502v2
                     else if (CheckZPY(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0xB6, op1});
                     else if (CheckAbs(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0xAE, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0xAE, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsY(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0xBE, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0xBE, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else
                         throw new InvalidOperandException(CleanContent, Number);
                     break;
@@ -457,11 +443,9 @@ namespace asm6502v2
                     else if (CheckZPX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0xB4, op1});
                     else if (CheckAbs(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0xAC, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0xAC, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsX(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0xBC, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0xBC, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else
                         throw new InvalidOperandException(CleanContent, Number);
                     break;
@@ -473,11 +457,9 @@ namespace asm6502v2
                     else if (CheckZPX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0x56, op1});
                     else if (CheckAbs(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x4E, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x4E, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsX(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x5E, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x5E, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else
                         throw new InvalidOperandException(CleanContent, Number);
                     break;
@@ -492,14 +474,11 @@ namespace asm6502v2
                     else if (CheckZPX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0x15, op1});
                     else if (CheckAbs(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x0D, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x0D, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsX(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x1D, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x1D, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsY(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x19, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x19, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckIndX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0x01, op1});
                     else if (CheckIndY(splittedline[1], out op1))
@@ -527,11 +506,9 @@ namespace asm6502v2
                     else if (CheckZPX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0x36, op1});
                     else if (CheckAbs(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x2E, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x2E, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsX(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x3E, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x3E, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else
                         throw new InvalidOperandException(CleanContent, Number);
                     break;
@@ -543,11 +520,9 @@ namespace asm6502v2
                     else if (CheckZPX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0x76, op1});
                     else if (CheckAbs(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x6E, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x6E, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsX(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x7E, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x7E, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else
                         throw new InvalidOperandException(CleanContent, Number);
                     break;
@@ -565,14 +540,11 @@ namespace asm6502v2
                     else if (CheckZPX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0xF5, op1});
                     else if (CheckAbs(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0xED, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0xED, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsX(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0xFD, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0xFD, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsY(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0xF9, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0xF9, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckIndX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0xE1, op1});
                     else if (CheckIndY(splittedline[1], out op1))
@@ -595,14 +567,11 @@ namespace asm6502v2
                     else if (CheckZPX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0x95, op1});
                     else if (CheckAbs(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x8D, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x8D, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsX(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x9D, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x9D, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckAbsY(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x99, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x99, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else if (CheckIndX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0x81, op1});
                     else if (CheckIndY(splittedline[1], out op1))
@@ -616,8 +585,7 @@ namespace asm6502v2
                     else if (CheckZPY(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0x96, op1});
                     else if (CheckAbs(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x8E, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x8E, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else
                         throw new InvalidOperandException(CleanContent, Number);
                     break;
@@ -627,8 +595,7 @@ namespace asm6502v2
                     else if (CheckZPX(splittedline[1], out op1))
                         bytes.AddRange(new byte[] {0x94, op1});
                     else if (CheckAbs(splittedline[1], out addr))
-                        bytes.AddRange(new byte[]
-                            {0x8C, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
+                        bytes.AddRange(new byte[] {0x8C, BitConverter.GetBytes(addr)[0], BitConverter.GetBytes(addr)[1]});
                     else
                         throw new InvalidOperandException(CleanContent, Number);
                     break;
@@ -653,192 +620,9 @@ namespace asm6502v2
                 default:
                     throw new ArgumentException($"Invalid code in line {Number}: {CleanContent}");
             }
+
             return bytes.ToArray();
         }
-
-        #region Checking Addressing Modes
-        
-        /// <summary>
-        /// Checks if a given string contains an absolute address
-        /// </summary>
-        /// <param name="opstring">string containing operand</param>
-        /// <param name="address">contains the address from the string</param>
-        /// <returns>true if check is successful, false if not</returns>
-        private bool CheckAbs(string opstring, out ushort address)
-        {
-            ushort adding = 0;
-            if (opstring.Contains("+"))
-            {
-                var split = opstring.Split('+');
-                if (!ushort.TryParse(split[1].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out adding))
-                    throw new InvalidOperandException(CleanContent, Number);
-                opstring = split[0].Trim();
-            }
-            if (!Regex.IsMatch(opstring.ToUpper(), @"\$[0-9A-F]{4}$"))
-            { 
-                address = 0;
-                return false;
-            }
-            if(!ushort.TryParse(opstring.Substring(1), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out address))
-                throw new InvalidOperandException(CleanContent, Number);
-            address += adding;
-            return true;
-        }
-
-        /// <summary>
-        /// Checks if a given string contains an absolute address indexed by X
-        /// </summary>
-        /// <param name="opstring">string containing operand</param>
-        /// <param name="address">contains the address from the string</param>
-        /// <returns>true if check is successful, false if not</returns>
-        private bool CheckAbsX(string opstring, out ushort address)
-        {
-            if (Regex.IsMatch(opstring.ToUpper(), @"\$[0-9A-F]{4},\s*X"))
-                return ushort.TryParse(opstring.Substring(1, 4), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out address);
-            address = 0;
-            return false;
-        }
-
-        /// <summary>
-        /// Checks if a given string contains an absolute address indexed by Y
-        /// </summary>
-        /// <param name="opstring">string containing operand</param>
-        /// <param name="address">contains the address from the string</param>
-        /// <returns>true if check is successful, false if not</returns>
-        private bool CheckAbsY(string opstring, out ushort address)
-        {
-            if (!Regex.IsMatch(opstring.ToUpper(), @"\$[0-9A-F]{4},\s*Y"))
-            {
-                address = 0;
-                return false;
-            }
-            return ushort.TryParse(opstring.Substring(1, 4), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out address);
-        }
-
-        /// <summary>
-        /// Checks if a given string contains an accumulator operand
-        /// </summary>
-        /// <param name="opstring">string containing operand</param>
-        /// <returns>true if check is successful, false if not</returns>
-        private bool CheckAccu(string opstring) => opstring.ToUpper().Equals("A");
-
-        /// <summary>
-        /// Checks if a given string contains an immediate value
-        /// </summary>
-        /// <param name="opstring">string containing operand</param>
-        /// <param name="value">contains the value from the string</param>
-        /// <returns>true if check is successful, false if not</returns>
-        private bool CheckImm(string opstring, out byte value)
-        {
-            if (!Regex.IsMatch(opstring.ToUpper(), @"\#\$[0-9A-F]{2}"))
-            {
-                value = 0;
-                return false;
-            }
-            return byte.TryParse(opstring.Substring(2), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out value);
-        }
-
-        /// <summary>
-        /// Checks if a given string contains an indirect address
-        /// </summary>
-        /// <param name="opstring">string containing operand</param>
-        /// <param name="address">contains the address from the string</param>
-        /// <returns>true if check is successful, false if not</returns>
-        private bool CheckInd(string opstring, out ushort address)
-        {
-            if (Regex.IsMatch(opstring.ToUpper(), @"\(\$[0-9A-F]{4}\)"))
-                return ushort.TryParse(opstring.Substring(2, 4), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out address);
-            address = 0;
-            return false;
-        }
-
-        /// <summary>
-        /// Checks if a given string contains an indirect address indexed by X
-        /// </summary>
-        /// <param name="opstring">string containing operand</param>
-        /// <param name="address">contains the address from the string</param>
-        /// <returns>true if check is successful, false if not</returns>
-        private bool CheckIndX(string opstring, out byte address)
-        {
-            if (Regex.IsMatch(opstring.ToUpper(), @"\(\$[0-9A-F]{2},\s*X\)"))
-                return byte.TryParse(opstring.Substring(2, 2), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out address);
-            address = 0;
-            return false;
-        }
-
-        /// <summary>
-        /// Checks if a given string contains an indirect address indexed by Y
-        /// </summary>
-        /// <param name="opstring">string containing operand</param>
-        /// <param name="address">contains the address from the string</param>
-        /// <returns>true if check is successful, false if not</returns>
-        private bool CheckIndY(string opstring, out byte address)
-        {
-            if (Regex.IsMatch(opstring.ToUpper(), @"\(\$[0-9A-F]{2}\),\s*Y"))
-                return byte.TryParse(opstring.Substring(2, 2), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out address);
-            address = 0;
-            return false;
-        }
-
-        /// <summary>
-        /// Checks if a given string contains a zeropage address
-        /// </summary>
-        /// <param name="opstring">string containing operand</param>
-        /// <param name="address">contains the address from the string</param>
-        /// <returns>true if check is successful, false if not</returns>
-        // ReSharper disable once InconsistentNaming
-        private bool CheckZP(string opstring, out byte address)
-        {
-            byte adding = 0;
-            if (opstring.Contains("+"))
-            {
-                var split = opstring.Split('+');
-                if (!byte.TryParse(split[1].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out adding))
-                    throw new InvalidOperandException(CleanContent, Number);
-                opstring = split[0].Trim();
-            }
-            if (!Regex.IsMatch(opstring.ToUpper(), @"\$[0-9A-F]{2}$"))
-            {
-                address = 0;
-                return false;
-            }
-            if(!byte.TryParse(opstring.Substring(1), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out address))
-                throw new InvalidOperandException(CleanContent, Number);
-            address += adding;
-            return true;
-        }
-
-        /// <summary>
-        /// Checks if a given string contains a zeropage address indexed by X
-        /// </summary>
-        /// <param name="opstring">string containing operand</param>
-        /// <param name="address">contains the address from the string</param>
-        /// <returns>true if check is successful, false if not</returns>
-        // ReSharper disable once InconsistentNaming
-        private bool CheckZPX(string opstring, out byte address)
-        {
-            if (Regex.IsMatch(opstring.ToUpper(), @"\$[0-9A-F]{2},\s*X"))
-                return byte.TryParse(opstring.Substring(1, 2), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out address);
-            address = 0;
-            return false;
-        }
-
-        /// <summary>
-        /// Checks if a given string contains a zeropage address indexed by Y
-        /// </summary>
-        /// <param name="opstring">string containing operand</param>
-        /// <param name="address">contains the address from the string</param>
-        /// <returns>true if check is successful, false if not</returns>
-        // ReSharper disable once InconsistentNaming
-        private bool CheckZPY(string opstring, out byte address)
-        {
-            if (Regex.IsMatch(opstring.ToUpper(), @"\$[0-9A-F]{2},\s*Y"))
-                return byte.TryParse(opstring.Substring(1, 2), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out address);
-            address = 0;
-            return false;
-        }
-        
-        #endregion
 
         public string ToString(StringType stringType)
         {
@@ -870,12 +654,190 @@ namespace asm6502v2
             }
         }
 
-        public enum StringType
+        /// <summary>
+        ///     Checks if a given string contains an absolute address
+        /// </summary>
+        /// <param name="opstring">string containing operand</param>
+        /// <param name="address">contains the address from the string</param>
+        /// <returns>true if check is successful, false if not</returns>
+        private bool CheckAbs(string opstring, out ushort address)
         {
-            Standard,
-            LinkerMode,
-            WithLineNumber,
-            Clean
+            ushort adding = 0;
+            if (opstring.Contains("+"))
+            {
+                var split = opstring.Split('+');
+                if (!ushort.TryParse(split[1].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out adding))
+                    throw new InvalidOperandException(CleanContent, Number);
+                opstring = split[0].Trim();
+            }
+
+            if (!Regex.IsMatch(opstring.ToUpper(), @"\$[0-9A-F]{4}$"))
+            {
+                address = 0;
+                return false;
+            }
+
+            if (!ushort.TryParse(opstring.Substring(1), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out address))
+                throw new InvalidOperandException(CleanContent, Number);
+            address += adding;
+            return true;
+        }
+
+        /// <summary>
+        ///     Checks if a given string contains an absolute address indexed by X
+        /// </summary>
+        /// <param name="opstring">string containing operand</param>
+        /// <param name="address">contains the address from the string</param>
+        /// <returns>true if check is successful, false if not</returns>
+        private bool CheckAbsX(string opstring, out ushort address)
+        {
+            if (Regex.IsMatch(opstring.ToUpper(), @"\$[0-9A-F]{4},\s*X"))
+                return ushort.TryParse(opstring.Substring(1, 4), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out address);
+            address = 0;
+            return false;
+        }
+
+        /// <summary>
+        ///     Checks if a given string contains an absolute address indexed by Y
+        /// </summary>
+        /// <param name="opstring">string containing operand</param>
+        /// <param name="address">contains the address from the string</param>
+        /// <returns>true if check is successful, false if not</returns>
+        private bool CheckAbsY(string opstring, out ushort address)
+        {
+            if (!Regex.IsMatch(opstring.ToUpper(), @"\$[0-9A-F]{4},\s*Y"))
+            {
+                address = 0;
+                return false;
+            }
+
+            return ushort.TryParse(opstring.Substring(1, 4), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out address);
+        }
+
+        /// <summary>
+        ///     Checks if a given string contains an accumulator operand
+        /// </summary>
+        /// <param name="opstring">string containing operand</param>
+        /// <returns>true if check is successful, false if not</returns>
+        private bool CheckAccu(string opstring) => opstring.ToUpper().Equals("A");
+
+        /// <summary>
+        ///     Checks if a given string contains an immediate value
+        /// </summary>
+        /// <param name="opstring">string containing operand</param>
+        /// <param name="value">contains the value from the string</param>
+        /// <returns>true if check is successful, false if not</returns>
+        private bool CheckImm(string opstring, out byte value)
+        {
+            if (!Regex.IsMatch(opstring.ToUpper(), @"\#\$[0-9A-F]{2}"))
+            {
+                value = 0;
+                return false;
+            }
+
+            return byte.TryParse(opstring.Substring(2), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out value);
+        }
+
+        /// <summary>
+        ///     Checks if a given string contains an indirect address
+        /// </summary>
+        /// <param name="opstring">string containing operand</param>
+        /// <param name="address">contains the address from the string</param>
+        /// <returns>true if check is successful, false if not</returns>
+        private bool CheckInd(string opstring, out ushort address)
+        {
+            if (Regex.IsMatch(opstring.ToUpper(), @"\(\$[0-9A-F]{4}\)"))
+                return ushort.TryParse(opstring.Substring(2, 4), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out address);
+            address = 0;
+            return false;
+        }
+
+        /// <summary>
+        ///     Checks if a given string contains an indirect address indexed by X
+        /// </summary>
+        /// <param name="opstring">string containing operand</param>
+        /// <param name="address">contains the address from the string</param>
+        /// <returns>true if check is successful, false if not</returns>
+        private bool CheckIndX(string opstring, out byte address)
+        {
+            if (Regex.IsMatch(opstring.ToUpper(), @"\(\$[0-9A-F]{2},\s*X\)"))
+                return byte.TryParse(opstring.Substring(2, 2), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out address);
+            address = 0;
+            return false;
+        }
+
+        /// <summary>
+        ///     Checks if a given string contains an indirect address indexed by Y
+        /// </summary>
+        /// <param name="opstring">string containing operand</param>
+        /// <param name="address">contains the address from the string</param>
+        /// <returns>true if check is successful, false if not</returns>
+        private bool CheckIndY(string opstring, out byte address)
+        {
+            if (Regex.IsMatch(opstring.ToUpper(), @"\(\$[0-9A-F]{2}\),\s*Y"))
+                return byte.TryParse(opstring.Substring(2, 2), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out address);
+            address = 0;
+            return false;
+        }
+
+        /// <summary>
+        ///     Checks if a given string contains a zeropage address
+        /// </summary>
+        /// <param name="opstring">string containing operand</param>
+        /// <param name="address">contains the address from the string</param>
+        /// <returns>true if check is successful, false if not</returns>
+        // ReSharper disable once InconsistentNaming
+        private bool CheckZP(string opstring, out byte address)
+        {
+            byte adding = 0;
+            if (opstring.Contains("+"))
+            {
+                var split = opstring.Split('+');
+                if (!byte.TryParse(split[1].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out adding))
+                    throw new InvalidOperandException(CleanContent, Number);
+                opstring = split[0].Trim();
+            }
+
+            if (!Regex.IsMatch(opstring.ToUpper(), @"\$[0-9A-F]{2}$"))
+            {
+                address = 0;
+                return false;
+            }
+
+            if (!byte.TryParse(opstring.Substring(1), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out address))
+                throw new InvalidOperandException(CleanContent, Number);
+            address += adding;
+            return true;
+        }
+
+        /// <summary>
+        ///     Checks if a given string contains a zeropage address indexed by X
+        /// </summary>
+        /// <param name="opstring">string containing operand</param>
+        /// <param name="address">contains the address from the string</param>
+        /// <returns>true if check is successful, false if not</returns>
+        // ReSharper disable once InconsistentNaming
+        private bool CheckZPX(string opstring, out byte address)
+        {
+            if (Regex.IsMatch(opstring.ToUpper(), @"\$[0-9A-F]{2},\s*X"))
+                return byte.TryParse(opstring.Substring(1, 2), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out address);
+            address = 0;
+            return false;
+        }
+
+        /// <summary>
+        ///     Checks if a given string contains a zeropage address indexed by Y
+        /// </summary>
+        /// <param name="opstring">string containing operand</param>
+        /// <param name="address">contains the address from the string</param>
+        /// <returns>true if check is successful, false if not</returns>
+        // ReSharper disable once InconsistentNaming
+        private bool CheckZPY(string opstring, out byte address)
+        {
+            if (Regex.IsMatch(opstring.ToUpper(), @"\$[0-9A-F]{2},\s*Y"))
+                return byte.TryParse(opstring.Substring(1, 2), NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out address);
+            address = 0;
+            return false;
         }
     }
 }

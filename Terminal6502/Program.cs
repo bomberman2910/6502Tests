@@ -7,35 +7,34 @@ namespace Terminal6502
 {
     internal static class Program
     {
-        private static CPU6502 _cpu;
+        private static Cpu6502 _cpu;
         private static Bus _mainbus;
-        private static RAM _ram;
-        private static ROM _rom;
+        private static RandomAccessMemory _randomAccessMemory;
+        private static ReadOnlyMemory _readOnlyMemory;
         private static Terminal _terminal;
-        
+
         public static void Main(string[] args)
         {
-
             var initrom = new byte[4096];
             initrom[0x0FFC] = 0x00;
             initrom[0x0FFD] = 0xF0;
             var bytes = File.ReadAllBytes("termtest.bin");
             for (var i = 0; i < bytes.Length; i++)
                 initrom[i] = bytes[i];
-            
-            _ram = new RAM(4096, 0x0000);    //0x0000-0x0FFF
-            _rom = new ROM(4096, 0xF000);    //0xF000-0xFFFF
-            _rom.SetMemory(initrom);
-            
+
+            _randomAccessMemory = new RandomAccessMemory(4096, 0x0000); //0x0000-0x0FFF
+            _readOnlyMemory = new ReadOnlyMemory(4096, 0xF000); //0xF000-0xFFFF
+            _readOnlyMemory.SetMemory(initrom);
+
             _terminal = new Terminal(0xD000);
 
             _mainbus = new Bus();
-            _mainbus.Devices.Add(_ram);
-            _mainbus.Devices.Add(_rom);
+            _mainbus.Devices.Add(_randomAccessMemory);
+            _mainbus.Devices.Add(_readOnlyMemory);
             _mainbus.Devices.Add(_terminal);
-            
-            _cpu = new CPU6502(_mainbus);
-            
+
+            _cpu = new Cpu6502(_mainbus);
+
             var key = new ConsoleKeyInfo();
 
             while (true)
@@ -62,12 +61,13 @@ namespace Terminal6502
                             Send(Encoding.ASCII.GetBytes(new[] {key.KeyChar})[0]);
                     }
                     else
-                    {
                         Send(0x00);
-                    }
-                    if (!newline) continue;
+
+                    if (!newline)
+                        continue;
                     Send(0x0D);
                 }
+
                 _cpu.Step();
                 _mainbus.PerformClockActions();
             }
@@ -75,15 +75,20 @@ namespace Terminal6502
 
         private static void Send(byte chr)
         {
-            while (!_terminal.RDY) { }
+            while (!_terminal.RDY)
+            {
+            }
+
             _terminal.RECV = chr;
         }
 
         private static string Receive()
         {
-            while(!_terminal.DATA) { }
+            while (!_terminal.DATA)
+            {
+            }
 
-            return Encoding.ASCII.GetString(new []{ _terminal.SEND });
+            return Encoding.ASCII.GetString(new[] {_terminal.SEND});
         }
     }
 }

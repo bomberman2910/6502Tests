@@ -6,7 +6,6 @@ namespace asm6502
 {
     public class CodeLine : IEquatable<CodeLine>
     {
-
         [SuppressMessage("ReSharper", "InconsistentNaming")]
         public enum Linetype
         {
@@ -18,10 +17,6 @@ namespace asm6502
             UNDEFINED
         }
 
-        public Linetype Type { get; }
-        public bool ContainsComment { get; }
-        public string Line { get; set; }
-
         public CodeLine(string line)
         {
             Line = line.Trim();
@@ -31,32 +26,30 @@ namespace asm6502
                 Type = Linetype.DIRECTIVE;
             else if (Line.Contains(":"))
                 Type = Linetype.LABEL;
-            else if ((Line.Contains("=") && !line.Contains(";")) || (Line.Contains(";") && Line.Split(';')[0].Contains("=")))
+            else if (Line.Contains("=") && !line.Contains(";") || Line.Contains(";") && Line.Split(';')[0].Contains("="))
                 Type = Linetype.VARIABLE;
             else
                 Type = Linetype.CODE;
             ContainsComment = Line.Contains(";");
         }
 
+        public Linetype Type { get; }
+        public bool ContainsComment { get; }
+        public string Line { get; set; }
+
         /// <summary>
-        /// Returns the CodeLine without comments and leading or trailing whitespaces
+        ///     Returns the CodeLine without comments and leading or trailing whitespaces
         /// </summary>
         /// <returns>clean CodeLine</returns>
         public string Clean() => ContainsComment ? Line.Split(';')[0].Trim() : Line.Trim();
 
-        #region Implements
         public override string ToString() => Line;
 
-        public override bool Equals(object obj)
-        {
-            return Equals(obj as CodeLine);
-        }
+        public override bool Equals(object obj) => Equals(obj as CodeLine);
 
-        public bool Equals(CodeLine other)
-        {
-            return other != null &&
-                   Line == other.Line;
-        }
+        public bool Equals(CodeLine other) =>
+            other != null &&
+            Line == other.Line;
 
         public override int GetHashCode()
         {
@@ -65,15 +58,8 @@ namespace asm6502
             return hashCode;
         }
 
-        public static bool operator ==(CodeLine left, CodeLine right)
-        {
-            return EqualityComparer<CodeLine>.Default.Equals(left, right);
-        }
+        public static bool operator ==(CodeLine left, CodeLine right) => EqualityComparer<CodeLine>.Default.Equals(left, right);
 
-        public static bool operator !=(CodeLine left, CodeLine right)
-        {
-            return !(left == right);
-        }
-        #endregion
+        public static bool operator !=(CodeLine left, CodeLine right) => !(left == right);
     }
 }

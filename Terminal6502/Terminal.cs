@@ -1,13 +1,17 @@
-using System;
 using lib6502;
 
 namespace Terminal6502
 {
     public class Terminal : Device
     {
-        private byte send;
         private byte recv;
+        private byte send;
         private byte status;
+
+        public Terminal(ushort rangeStart) : base(rangeStart, (ushort) (rangeStart + 4))
+        {
+            RDY = false;
+        }
 
         public byte SEND
         {
@@ -39,50 +43,49 @@ namespace Terminal6502
 
         public bool RDY
         {
-            get => CPU6502.CheckBit(status, 3);        //Check SRV_RDY
-            set => SetStatus(StatusBit.CLI_RDY, value);    //Set CLI_RDY
+            get { return Cpu6502.CheckBit(status, 3); } //Check SRV_RDY
+            set { SetStatus(StatusBit.CLI_RDY, value); } //Set CLI_RDY
         }
 
-        public bool DATA => CPU6502.CheckBit(status, 2);
-        
-        public Terminal(ushort rangeStart) : base(rangeStart, (ushort) (rangeStart + 4))
+        public bool DATA
         {
-            RDY = false;
+            get { return Cpu6502.CheckBit(status, 2); }
         }
 
         public override void SetData(byte data, ushort address)
         {
-            if (!Request(address)) return;
+            if (!Request(address))
+                return;
             switch (address)
             {
-                case var adr when adr - start == 0:    //SEND
+                case var adr when adr - Start == 0: //SEND
                     SEND = data;
                     break;
-                case var adr when adr - start == 1:    //RECV (readonly for 6502)
+                case var adr when adr - Start == 1: //RECV (readonly for 6502)
                     break;
-                case var adr when adr-start == 2:
-                    SetStatus(StatusBit.SRV_RDY, data > 0x00);    //Set SRV_RDY
+                case var adr when adr - Start == 2:
+                    SetStatus(StatusBit.SRV_RDY, data > 0x00); //Set SRV_RDY
                     break;
-                case var adr when adr-start == 3:
-                    SetStatus(StatusBit.SRV_DATA, data > 0x00);    //Set SRV_DATA
+                case var adr when adr - Start == 3:
+                    SetStatus(StatusBit.SRV_DATA, data > 0x00); //Set SRV_DATA
                     break;
             }
         }
 
         public override byte GetData(ushort address)
         {
-            if (!Request(address)) return 0x00;
+            if (!Request(address))
+                return 0x00;
             switch (address)
             {
-                case var adr when adr - start == 0:    //SEND
+                case var adr when adr - Start == 0: //SEND
                     return 0x00;
-                case var adr when adr - start == 1:    //RECV (readonly)
+                case var adr when adr - Start == 1: //RECV (readonly)
                     return RECV;
-                case var adr when adr - start == 2:
-                    return (byte) (CPU6502.CheckBit(status, 1) ? 1 : 0);    //Check CLI_RDY
-                case var adr when adr-start == 3:
-                    return (byte) (CPU6502.CheckBit(status, 0) ? 1 : 0);    //Check CLI_DATA
-                    break;
+                case var adr when adr - Start == 2:
+                    return (byte) (Cpu6502.CheckBit(status, 1) ? 1 : 0); //Check CLI_RDY
+                case var adr when adr - Start == 3:
+                    return (byte) (Cpu6502.CheckBit(status, 0) ? 1 : 0); //Check CLI_DATA
             }
 
             return 0x00;
@@ -91,7 +94,7 @@ namespace Terminal6502
         public override void PerformClockAction()
         {
         }
-        
+
         public void SetStatus(byte bit, bool state)
         {
             if (state)
@@ -99,13 +102,28 @@ namespace Terminal6502
             else
                 status &= (byte) ~bit;
         }
-        
+
         public static class StatusBit
         {
-            public static byte SRV_RDY => 0b00001000;
-            public static byte SRV_DATA => 0b00000100;
-            public static byte CLI_RDY => 0b00000010;
-            public static byte CLI_DATA => 0b00000001;
+            public static byte SRV_RDY
+            {
+                get { return 0b00001000; }
+            }
+
+            public static byte SRV_DATA
+            {
+                get { return 0b00000100; }
+            }
+
+            public static byte CLI_RDY
+            {
+                get { return 0b00000010; }
+            }
+
+            public static byte CLI_DATA
+            {
+                get { return 0b00000001; }
+            }
         }
     }
 }
