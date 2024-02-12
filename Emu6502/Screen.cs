@@ -3,8 +3,6 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.Xml.Serialization;
 using lib6502;
-using SDL2;
-using static SDL2.SDL;
 
 namespace Emu6502
 {
@@ -24,7 +22,7 @@ namespace Emu6502
         {
             if (Memory[3] != 0x02)
                 return;
-            lock(MainClass.frameBufferLock)
+            lock(MainClass.FrameBufferLock)
                 BitmapScreen.SetPixel(Memory[0], Memory[1], Color.FromArgb(0xFF + (0xFF << 8) + (0xFF << 16) + (Memory[2] << 24)));
             Memory[3] = 0x01;
         }
@@ -37,13 +35,13 @@ namespace Emu6502
 
         public void Screenshot()
         {
-            lock(MainClass.frameBufferLock)
+            lock(MainClass.FrameBufferLock)
                 BitmapScreen.Bitmap.Save("screen.bmp");
         }
 
         public void Reset()
         {
-            lock (MainClass.frameBufferLock)
+            lock (MainClass.FrameBufferLock)
             {
                 for (var y = 0; y < BitmapScreen.Height; y++)
                 {

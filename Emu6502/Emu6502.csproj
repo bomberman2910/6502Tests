@@ -22,18 +22,6 @@
     <None Update="apple1.vid">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Update="SDL2.dll">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="SDL2.lib">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="SDL2main.lib">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
-    <None Update="SDL2test.lib">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </None>
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="System.Drawing.Common" Version="7.0.0" />
@@ -44,9 +32,4 @@
   <ItemGroup>
     <Compile Remove="Keyboard.cs" />
   </ItemGroup>
-  <ItemGroup>
-    <Reference Include="SDL2-CS">
-        <HintPath>.\SDL2-CS.dll</HintPath>
-    </Reference>
-</ItemGroup>
 </Project>

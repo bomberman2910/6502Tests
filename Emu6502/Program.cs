@@ -1,16 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
-using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Threading;
 using System.Threading.Tasks;
-using System.Xml.Serialization;
 using lib6502;
-using static SDL2.SDL;
 
 namespace Emu6502;
+
 internal static class MainClass
 {
     private static Cpu6502 _cpu;
@@ -22,16 +19,16 @@ internal static class MainClass
     private static ParallelInterfaceAdapter _parallelInterfaceAdapter;
     private static SerialInterfaceAdapter _serialInterfaceAdapter;
 
-    private static DirectBitmap frameBuffer;
-    public static object frameBufferLock = new object();
+    private static DirectBitmap _frameBuffer;
+    public static readonly object FrameBufferLock = new();
 
     private static List<ushort> _breakpoints;
     private static ushort _currentpage;
-    private static bool showSdl;
+    private static bool _showSdl;
 
-    private static Commander commander;
+    private static Commander _commander;
 
-    [DllImport("libc")]
+    [DllImport("libc", CharSet = CharSet.Unicode)]
     private static extern int system(string exec);
 
     private static void ResizeMac(int width, int height)
@@ -41,18 +38,13 @@ internal static class MainClass
 
     private static void InvertColors()
     {
-        var temp = Console.ForegroundColor;
-        Console.ForegroundColor = Console.BackgroundColor;
-        Console.BackgroundColor = temp;
+        (Console.ForegroundColor, Console.BackgroundColor) = (Console.BackgroundColor, Console.ForegroundColor);
     }
 
     private static void Reset()
     {
         _mainbus = new Bus();
         _randomAccessMemory = new RandomAccessMemory(4096, 0x0000);
-        //var bbytes = File.ReadAllBytes("dectest.bin");
-        //for (var pc = 0; pc < bbytes.Length; pc++)
-        //   ram.SetData(bbytes[pc], (ushort)(0x0200 + pc));
         _mainbus.Devices.Add(_randomAccessMemory);
 
         _readOnlyMemory = new ReadOnlyMemory(4096, 0xF000);
@@ -67,7 +59,7 @@ internal static class MainClass
 
         _screen = new Screen(160, 120, 0xD000);
         _screen.Reset();
-        frameBuffer = _screen.BitmapScreen;
+        _frameBuffer = _screen.BitmapScreen;
         _mainbus.Devices.Add(_screen);
 
         _textscreen = new TextScreen(40, 25, 0xD010);
@@ -179,6 +171,7 @@ internal static class MainClass
             Console.WriteLine("File not found");
             return;
         }
+
         var bytes = File.ReadAllBytes(path);
         for (var mem = 0; mem < bytes.Length; mem++)
             _randomAccessMemory.SetData(bytes[mem], (ushort)(address + mem));
@@ -269,6 +262,7 @@ internal static class MainClass
             Console.WriteLine("Error during assembly");
             return;
         }
+
         for (var i = 0; i < bytes.Length; i++)
             _mainbus.SetData(bytes[i], (ushort)(_cpu.ProgramCounter + i));
     }
@@ -282,6 +276,7 @@ internal static class MainClass
             Console.WriteLine("File not found");
             return;
         }
+
         var lines = File.ReadAllText(path);
         byte[] bytes;
         try
@@ -293,6 +288,7 @@ internal static class MainClass
             Console.WriteLine("Error during assembly");
             return;
         }
+
         for (var i = 0; i < bytes.Length; i++)
             _mainbus.SetData(bytes[i], (ushort)(_cpu.ProgramCounter + i));
     }
@@ -324,13 +320,13 @@ internal static class MainClass
     [Command("h", "Displays this help message")]
     private static void PrintHelp()
     {
-        Console.WriteLine(commander.GenerateHelpLines());
+        Console.WriteLine(_commander.GenerateHelpLines());
     }
 
     public static void Main(string[] args)
     {
-        commander = new Commander();
-        commander.RegisterCommandsInType(typeof(MainClass));
+        _commander = new Commander();
+        _commander.RegisterCommandsInType(typeof(MainClass));
 
         _currentpage = 0x0000;
 
@@ -338,8 +334,6 @@ internal static class MainClass
         Console.Clear();
 
         Reset();
-        showSdl = true;
-        Task.Factory.StartNew(SdlThread);
 
         var command = "";
         _breakpoints = new List<ushort>();
@@ -352,7 +346,7 @@ internal static class MainClass
             switch (command)
             {
                 case "q":
-                    showSdl = false;
+                    _showSdl = false;
                     return;
                 case "":
                     _cpu.Step();
@@ -364,65 +358,16 @@ internal static class MainClass
                 default:
                     try
                     {
-                        commander.ExecuteCommand(command);
+                        _commander.ExecuteCommand(command);
                     }
                     catch
                     {
                         Console.WriteLine("Input error");
                     }
+
                     _ = Console.ReadKey(true);
                     break;
             }
         }
-    }
-
-    public static void SdlThread()
-    {
-        var renderWidth = 640;
-        var renderHeight = 480;
-
-        SDL_Init(SDL_INIT_VIDEO);
-
-        var sdlWindow = SDL_CreateWindow("Screen", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 640, 480, SDL_WindowFlags.SDL_WINDOW_SHOWN);
-        var renderer = SDL_CreateRenderer(sdlWindow, -1, SDL_RendererFlags.SDL_RENDERER_ACCELERATED | SDL_RendererFlags.SDL_RENDERER_PRESENTVSYNC);
-
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderClear(renderer);
-        SDL_RenderPresent(renderer);
-
-        while (showSdl)
-        {
-            var width = frameBuffer.Width;
-            var height = frameBuffer.Height;
-            var widthRatio = renderWidth / width;
-            var heightRatio = renderHeight / height;
-
-            lock (frameBufferLock)
-            {
-                for (int y = 0; y < height; y++)
-                {
-                    for (int x = 0; x < width; x++)
-                    {
-                        if (!frameBuffer.GetPixel(x, y).Equals(Color.Black))
-                        {
-                            var pixel = new SDL_Rect
-                            {
-                                x = x * widthRatio,
-                                y = y * heightRatio,
-                                w = widthRatio,
-                                h = heightRatio
-                            };
-                            SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, frameBuffer.GetPixel(x, y).A);
-                            SDL_RenderFillRect(renderer, ref pixel);
-                        }
-                    }
-                }
-            }
-            SDL_RenderPresent(renderer);
-            SDL_Delay(20);
-        }
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(sdlWindow);
-        SDL_Quit();
     }
 }
