@@ -43,13 +43,13 @@ namespace Terminal6502
 
         public bool RDY
         {
-            get { return Cpu6502.CheckBit(status, 3); } //Check SRV_RDY
+            get { return Util.CheckBit(status, 3); } //Check SRV_RDY
             set { SetStatus(StatusBit.CLI_RDY, value); } //Set CLI_RDY
         }
 
         public bool DATA
         {
-            get { return Cpu6502.CheckBit(status, 2); }
+            get { return Util.CheckBit(status, 2); }
         }
 
         public override void SetData(byte data, ushort address)
@@ -83,9 +83,9 @@ namespace Terminal6502
                 case var adr when adr - Start == 1: //RECV (readonly)
                     return RECV;
                 case var adr when adr - Start == 2:
-                    return (byte) (Cpu6502.CheckBit(status, 1) ? 1 : 0); //Check CLI_RDY
+                    return (byte) (Util.CheckBit(status, 1) ? 1 : 0); //Check CLI_RDY
                 case var adr when adr - Start == 3:
-                    return (byte) (Cpu6502.CheckBit(status, 0) ? 1 : 0); //Check CLI_DATA
+                    return (byte) (Util.CheckBit(status, 0) ? 1 : 0); //Check CLI_DATA
             }
 
             return 0x00;

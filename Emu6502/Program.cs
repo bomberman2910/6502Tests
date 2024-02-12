@@ -1,422 +1,428 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Xml.Serialization;
 using lib6502;
+using static SDL2.SDL;
 
-namespace Emu6502
+namespace Emu6502;
+internal static class MainClass
 {
-    internal static class MainClass
+    private static Cpu6502 _cpu;
+    private static Bus _mainbus;
+    private static RandomAccessMemory _randomAccessMemory;
+    private static ReadOnlyMemory _readOnlyMemory;
+    private static Screen _screen;
+    private static TextScreen _textscreen;
+    private static ParallelInterfaceAdapter _parallelInterfaceAdapter;
+    private static SerialInterfaceAdapter _serialInterfaceAdapter;
+
+    private static DirectBitmap frameBuffer;
+    public static object frameBufferLock = new object();
+
+    private static List<ushort> _breakpoints;
+    private static ushort _currentpage;
+    private static bool showSdl;
+
+    private static Commander commander;
+
+    [DllImport("libc")]
+    private static extern int system(string exec);
+
+    private static void ResizeMac(int width, int height)
     {
-        private static Cpu6502 _cpu;
-        private static Bus _mainbus;
-        private static RandomAccessMemory _randomAccessMemory;
-        private static ReadOnlyMemory _readOnlyMemory;
-        private static Screen _screen;
-        private static TextScreen _textscreen;
-        private static ParallelInterfaceAdapter _parallelInterfaceAdapter;
-        private static SerialInterfaceAdapter _serialInterfaceAdapter;
+        system(@"printf '\e[8;" + height + ";" + width + "t'");
+    }
 
-        private static List<ushort> _breakpoints;
-        private static ushort _currentpage;
+    private static void InvertColors()
+    {
+        var temp = Console.ForegroundColor;
+        Console.ForegroundColor = Console.BackgroundColor;
+        Console.BackgroundColor = temp;
+    }
 
-        [DllImport("libc")]
-        private static extern int system(string exec);
+    private static void Reset()
+    {
+        _mainbus = new Bus();
+        _randomAccessMemory = new RandomAccessMemory(4096, 0x0000);
+        //var bbytes = File.ReadAllBytes("dectest.bin");
+        //for (var pc = 0; pc < bbytes.Length; pc++)
+        //   ram.SetData(bbytes[pc], (ushort)(0x0200 + pc));
+        _mainbus.Devices.Add(_randomAccessMemory);
 
-        private static void ResizeMac(int width, int height)
+        _readOnlyMemory = new ReadOnlyMemory(4096, 0xF000);
+        var initrom = new byte[4096];
+        initrom[0x0FFD] = 0x02;
+        for (var i = 0; i < AsmRoutines.PixelDspRoutine().Length; i++)
+            initrom[0x0000 + i] = AsmRoutines.PixelDspRoutine()[i];
+        for (var i = 0; i < AsmRoutines.CharDspRoutine().Length; i++)
+            initrom[0x001C + i] = AsmRoutines.CharDspRoutine()[i];
+        _readOnlyMemory.SetMemory(initrom);
+        _mainbus.Devices.Add(_readOnlyMemory);
+
+        _screen = new Screen(160, 120, 0xD000);
+        _screen.Reset();
+        frameBuffer = _screen.BitmapScreen;
+        _mainbus.Devices.Add(_screen);
+
+        _textscreen = new TextScreen(40, 25, 0xD010);
+        _textscreen.Reset();
+        _mainbus.Devices.Add(_textscreen);
+
+        _parallelInterfaceAdapter = new ParallelInterfaceAdapter(_cpu, 0xD020);
+        _mainbus.Devices.Add(_parallelInterfaceAdapter);
+
+        _serialInterfaceAdapter = new SerialInterfaceAdapter(0xD030);
+        _mainbus.Devices.Add(_serialInterfaceAdapter);
+
+        _cpu = new Cpu6502(_mainbus)
         {
-            system(@"printf '\e[8;" + height + ";" + width + "t'");
-        }
+            ProgramCounter = 0x0200
+        };
+    }
 
-        private static void InvertColors()
+    private static void PrintStatus()
+    {
+        Console.Clear();
+        Console.WriteLine($"{_cpu}\n");
+        Console.WriteLine($"{_parallelInterfaceAdapter}\n");
+        for (int line = _currentpage; line < (_currentpage + 0x0400 > 65536 ? 65536 : _currentpage + 0x0400); line += 32)
         {
-            var temp = Console.ForegroundColor;
-            Console.ForegroundColor = Console.BackgroundColor;
-            Console.BackgroundColor = temp;
-        }
-
-        private static void Reset()
-        {
-            _mainbus = new Bus();
-            _randomAccessMemory = new RandomAccessMemory(4096, 0x0000);
-            //var bbytes = File.ReadAllBytes("dectest.bin");
-            //for (var pc = 0; pc < bbytes.Length; pc++)
-            //   ram.SetData(bbytes[pc], (ushort)(0x0200 + pc));
-            _mainbus.Devices.Add(_randomAccessMemory);
-
-            _readOnlyMemory = new ReadOnlyMemory(4096, 0xF000);
-            var initrom = new byte[4096];
-            initrom[0x0FFD] = 0x02;
-            for (var i = 0; i < AsmRoutines.PixelDspRoutine().Length; i++)
-                initrom[0x0000 + i] = AsmRoutines.PixelDspRoutine()[i];
-            for (var i = 0; i < AsmRoutines.CharDspRoutine().Length; i++)
-                initrom[0x001C + i] = AsmRoutines.CharDspRoutine()[i];
-            _readOnlyMemory.SetMemory(initrom);
-            _mainbus.Devices.Add(_readOnlyMemory);
-
-            _screen = new Screen(160, 120, 0xD000);
-            _screen.Reset();
-            _mainbus.Devices.Add(_screen);
-
-            _textscreen = new TextScreen(40, 25, 0xD010);
-            _textscreen.Reset();
-            _mainbus.Devices.Add(_textscreen);
-
-            _parallelInterfaceAdapter = new ParallelInterfaceAdapter(_cpu, 0xD020);
-            _mainbus.Devices.Add(_parallelInterfaceAdapter);
-
-            _serialInterfaceAdapter = new SerialInterfaceAdapter(0xD030);
-            _mainbus.Devices.Add(_serialInterfaceAdapter);
-
-            _cpu = new Cpu6502(_mainbus)
+            Console.Write("$" + line.ToString("X4") + ":");
+            for (var pc = line; pc < line + 32; pc++)
             {
-                ProgramCounter = 0x0200
-            };
-        }
-
-        private static void PrintStatus()
-        {
-            Console.Clear();
-            Console.WriteLine($"{_cpu}\n");
-            Console.WriteLine($"{_parallelInterfaceAdapter}\n");
-            for (int line = _currentpage; line < (_currentpage + 0x0400 > 65536 ? 65536 : _currentpage + 0x0400); line += 32)
-            {
-                Console.Write("$" + line.ToString("X4") + ":");
-                for (var pc = line; pc < line + 32; pc++)
-                {
-                    Console.Write(" ");
-                    if (pc == _cpu.ProgramCounter)
-                        InvertColors();
-                    Console.Write($"${_mainbus.GetData((ushort) pc):X2}");
-                    if (pc == _cpu.ProgramCounter)
-                        InvertColors();
-                }
-
-                Console.WriteLine();
+                Console.Write(" ");
+                if (pc == _cpu.ProgramCounter)
+                    InvertColors();
+                Console.Write($"${_mainbus.GetData((ushort)pc):X2}");
+                if (pc == _cpu.ProgramCounter)
+                    InvertColors();
             }
 
             Console.WriteLine();
-            Console.Write(">");
         }
 
-        private static void ExecuteCommand(string command)
+        Console.WriteLine();
+        Console.Write(">");
+    }
+
+    [Command("reg a", "Sets the value of register A")]
+    [Argument(typeof(byte), "value", "New value for register A")]
+    private static void ModifyRegisterA(byte value)
+    {
+        _cpu.A = value;
+    }
+
+    [Command("reg x", "Sets the value of register X")]
+    [Argument(typeof(byte), "value", "New value for register X")]
+    private static void ModifyRegisterX(byte value)
+    {
+        _cpu.X = value;
+    }
+
+    [Command("reg y", "Sets the value of register Y")]
+    [Argument(typeof(byte), "value", "New value for register Y")]
+    private static void ModifyRegisterY(byte value)
+    {
+        _cpu.Y = value;
+    }
+
+    [Command("reg sr", "Sets the value of the status register")]
+    [Argument(typeof(byte), "value", "New value for the status register")]
+    private static void ModifyRegisterSR(byte value)
+    {
+        _cpu.StatusRegister = value;
+    }
+
+    [Command("reg sp", "Sets the value of the stack pointer")]
+    [Argument(typeof(byte), "value", "New value for the stack pointer")]
+    private static void ModifyRegisterSP(byte value)
+    {
+        _cpu.StackPointer = value;
+    }
+
+    [Command("reg pc", "Sets the value of the program counter")]
+    [Argument(typeof(ushort), "value", "New value for the program counter")]
+    private static void ModifyPC(byte value)
+    {
+        _cpu.ProgramCounter = value;
+    }
+
+    [Command("mem disp", "Moves the start of the displayed memory page")]
+    [Argument(typeof(ushort), "page_start", "New page start for displayed memory")]
+    private static void DisplayMem(ushort pageStart)
+    {
+        _currentpage = pageStart;
+    }
+
+    [Command("mem set", "Sets memory")]
+    [Argument(typeof(ushort), "address", "The address to where the values are to be written")]
+    [Argument(typeof(byte[]), "values", "The values to be written to the address")]
+    private static void SetMemory(ushort address, byte[] values)
+    {
+        for (var mem = 0; mem < values.Length; mem++)
+            _randomAccessMemory.SetData(values[mem], (ushort)(address + mem));
+    }
+
+    [Command("mem load", "Asks for path to binary file and loads contents to given address")]
+    [Argument(typeof(ushort), "address", "The address to where the values are to be written")]
+    private static void LoadMemory(ushort address)
+    {
+        var path = Console.ReadLine();
+        if (!File.Exists(path))
         {
-            ushort usvalue;
-            byte bvalue;
-            string[] setsplit;
-            var success = false;
+            Console.WriteLine("File not found");
+            return;
+        }
+        var bytes = File.ReadAllBytes(path);
+        for (var mem = 0; mem < bytes.Length; mem++)
+            _randomAccessMemory.SetData(bytes[mem], (ushort)(address + mem));
+    }
+
+    [Command("bp list", "Lists all currently set breakpoints")]
+    private static void ListBreakpoints()
+    {
+        foreach (var brk in _breakpoints)
+            Console.Write(brk.ToString("X4") + ", ");
+    }
+
+    [Command("bp add", "Adds a breakpoint")]
+    [Argument(typeof(ushort), "address", "address of the breakpoint")]
+    private static void AddBreakpoint(ushort address)
+    {
+        _breakpoints.Add(address);
+    }
+
+    [Command("bp rm", "Removes a breakpoint")]
+    [Argument(typeof(ushort), "address", "address of the breakpoint")]
+    private static void RemoveBreakpoint(ushort address)
+    {
+        _breakpoints.Remove(address);
+    }
+
+    [Command("pia get a", "Displays the current value of port A of the PIA")]
+    private static void GetPiaPortA()
+    {
+        Console.WriteLine($"Port A value: {_parallelInterfaceAdapter.PortA}");
+    }
+
+    [Command("pia get b", "Displays the current value of port B of the PIA")]
+    private static void GetPiaPortB()
+    {
+        Console.WriteLine($"Port B value: {_parallelInterfaceAdapter.PortB}");
+    }
+
+    [Command("pia set a", "Writes a value to port A of the PIA")]
+    [Argument(typeof(byte), "value", "Value to write to Port A")]
+    private static void SetPiaPortA(byte value)
+    {
+        _parallelInterfaceAdapter.PortA = value;
+    }
+
+    [Command("pia set b", "Writes a value to port B of the PIA")]
+    [Argument(typeof(byte), "value", "Value to write to Port B")]
+    private static void SetPiaPortB(byte value)
+    {
+        _parallelInterfaceAdapter.PortB = value;
+    }
+
+    [Command("pia set irq", "Flips the state of the IRQ flag of the PIA")]
+    private static void SetPiaIrq()
+    {
+        _parallelInterfaceAdapter.InterruptRequest = !_parallelInterfaceAdapter.InterruptRequest;
+    }
+
+    [Command("reset all", "Resets the entire system")]
+    private static void ResetAll()
+    {
+        Reset();
+    }
+
+    [Command("reset cpu", "Resets the CPU")]
+    private static void ResetCpu()
+    {
+        _cpu.Reset();
+    }
+
+    [Command("reset pia", "Resets the PIA")]
+    private static void ResetPia()
+    {
+        _parallelInterfaceAdapter.Reset();
+    }
+
+    [Command("asm line", "Takes a line of assembly, tries to assemble it and writes it to memory starting at the program counter")]
+    private static void AssembleLine()
+    {
+        var line = Console.ReadLine();
+        byte[] bytes;
+        try
+        {
+            bytes = Asm6502.Assemble(line);
+        }
+        catch
+        {
+            Console.WriteLine("Error during assembly");
+            return;
+        }
+        for (var i = 0; i < bytes.Length; i++)
+            _mainbus.SetData(bytes[i], (ushort)(_cpu.ProgramCounter + i));
+    }
+
+    [Command("asm file", "Takes a path to a file and reads the contents, then tries to assemble it and writes it to memory starting at the program counter")]
+    private static void AssembleFile()
+    {
+        var path = Console.ReadLine();
+        if (!File.Exists(path))
+        {
+            Console.WriteLine("File not found");
+            return;
+        }
+        var lines = File.ReadAllText(path);
+        byte[] bytes;
+        try
+        {
+            bytes = Asm6502.Assemble(lines);
+        }
+        catch
+        {
+            Console.WriteLine("Error during assembly");
+            return;
+        }
+        for (var i = 0; i < bytes.Length; i++)
+            _mainbus.SetData(bytes[i], (ushort)(_cpu.ProgramCounter + i));
+    }
+
+    [Command("run", "Runs the system either until 0x00 is read as the next instruction or a breakpoint is encountered")]
+    private static void Run()
+    {
+        if (_breakpoints.Count == 0)
+        {
+            do
+            {
+                _cpu.Step();
+                _mainbus.PerformClockActions();
+            } while (_mainbus.GetData(_cpu.ProgramCounter) != 0x00);
+        }
+        else
+        {
+            do
+            {
+                _cpu.Step();
+                _mainbus.PerformClockActions();
+            } while (!_breakpoints.Contains(_cpu.ProgramCounter) && _mainbus.GetData(_cpu.ProgramCounter) != 0x00);
+        }
+
+        _screen?.Screenshot();
+        _textscreen?.Screenshot();
+    }
+
+    [Command("h", "Displays this help message")]
+    private static void PrintHelp()
+    {
+        Console.WriteLine(commander.GenerateHelpLines());
+    }
+
+    public static void Main(string[] args)
+    {
+        commander = new Commander();
+        commander.RegisterCommandsInType(typeof(MainClass));
+
+        _currentpage = 0x0000;
+
+        //ResizeMac(140, 40);
+        Console.Clear();
+
+        Reset();
+        showSdl = true;
+        Task.Factory.StartNew(SdlThread);
+
+        var command = "";
+        _breakpoints = new List<ushort>();
+
+        while (command != null && !command.ToLower().Equals("q"))
+        {
+            PrintStatus();
+
+            command = Console.ReadLine()?.ToLower();
             switch (command)
             {
                 case "q":
-                    break;
-                case var cmd when cmd.StartsWith("reg"):
-                    setsplit = cmd.Split(' ');
-                    if (setsplit.Length != 3)
-                    {
-                        Console.WriteLine("Fehlerhafte Eingabe!");
-                        _ = Console.ReadKey(true);
-                        break;
-                    }
-
-                    switch (setsplit[1])
-                    {
-                        case "a":
-                            success = byte.TryParse(setsplit[2], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out bvalue);
-                            if (success)
-                                _cpu.A = bvalue;
-                            break;
-                        case "x":
-                            success = byte.TryParse(setsplit[2], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out bvalue);
-                            if (success)
-                                _cpu.X = bvalue;
-                            break;
-                        case "y":
-                            success = byte.TryParse(setsplit[2], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out bvalue);
-                            if (success)
-                                _cpu.Y = bvalue;
-                            break;
-                        case "sr":
-                            success = byte.TryParse(setsplit[2], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out bvalue);
-                            if (success)
-                                _cpu.StatusRegister = bvalue;
-                            break;
-                        case "sp":
-                            success = byte.TryParse(setsplit[2], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out bvalue);
-                            if (success)
-                                _cpu.StackPointer = bvalue;
-                            break;
-                        case "pc":
-                            success = ushort.TryParse(setsplit[2], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out usvalue);
-                            if (success)
-                                _cpu.ProgramCounter = usvalue;
-                            break;
-                    }
-
-                    if (success)
-                        break;
-                    Console.WriteLine("Fehlerhafte Eingabe!");
-                    _ = Console.ReadKey(true);
-                    break;
-                case var cmd when cmd.StartsWith("mem"):
-                    setsplit = cmd.Split(new[] {' '}, 4);
-                    if (setsplit.Length is < 3 or > 4)
-                    {
-                        Console.WriteLine("Fehlerhafte Eingabe!");
-                        _ = Console.ReadKey(true);
-                        break;
-                    }
-
-                    if (setsplit[1].Equals("disp"))
-                    {
-                        success = ushort.TryParse(setsplit[2], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out usvalue);
-                        if (success)
-                            _currentpage = usvalue;
-                    }
-                    else if (setsplit[1].Equals("set"))
-                    {
-                        success = ushort.TryParse(setsplit[2], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out usvalue);
-                        if (!success)
-                            break;
-                        var sbytes = setsplit[3].Split(' ');
-                        var bbytes = new byte[sbytes.Length];
-                        for (var i = 0; i < sbytes.Length; i++)
-                        {
-                            success = byte.TryParse(sbytes[i], NumberStyles.HexNumber, CultureInfo.InvariantCulture, out bbytes[i]);
-                            if (!success)
-                                break;
-                        }
-
-                        for (var mem = 0; mem < bbytes.Length; mem++)
-                            _randomAccessMemory.SetData(bbytes[mem], (ushort) (usvalue + mem));
-                    }
-
-                    if (success)
-                        break;
-                    Console.WriteLine("Fehlerhafte Eingabe!");
-                    _ = Console.ReadKey(true);
-                    break;
-                case var cmd when cmd.StartsWith("bp"):
-                    setsplit = cmd.Split(new[] {' '}, 3);
-                    if (setsplit.Length is < 2 or > 3)
-                    {
-                        Console.WriteLine("Fehlerhafte Eingabe!");
-                        _ = Console.ReadKey(true);
-                        break;
-                    }
-
-                    switch (setsplit[1])
-                    {
-                        case "list":
-                            foreach (var brk in _breakpoints)
-                                Console.Write(brk.ToString("X4") + ", ");
-                            _ = Console.ReadKey(true);
-                            success = true;
-                            break;
-                        case "add":
-                            success = ushort.TryParse(setsplit[2], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out usvalue);
-                            if (success)
-                                _breakpoints.Add(usvalue);
-                            break;
-                        case "rm":
-                            success = ushort.TryParse(setsplit[2], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out usvalue) && _breakpoints.Contains(usvalue);
-                            if (success)
-                                _breakpoints.Remove(usvalue);
-                            break;
-                    }
-
-                    if (success)
-                        break;
-                    Console.WriteLine("Fehlerhafte Eingabe!");
-                    _ = Console.ReadKey(true);
-                    break;
-                case var cmd when cmd.StartsWith("pia"):
-                    setsplit = cmd.Split(new[] {' '}, 4);
-                    if (setsplit.Length is < 3 or > 4)
-                    {
-                        Console.WriteLine("Fehlerhafte Eingabe!");
-                        _ = Console.ReadKey(true);
-                        break;
-                    }
-
-                    switch (setsplit[1])
-                    {
-                        case "get":
-                            switch (setsplit[2])
-                            {
-                                case "a":
-                                    Console.WriteLine($"Port A value: {_parallelInterfaceAdapter.PortA}");
-                                    success = true;
-                                    break;
-                                case "b":
-                                    Console.WriteLine($"Port B value: {_parallelInterfaceAdapter.PortB}");
-                                    success = true;
-                                    break;
-                            }
-                            break;
-                        case "set" when setsplit[2].Equals("a"):
-                            success = byte.TryParse(setsplit[3], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out bvalue);
-                            if (success)
-                                _parallelInterfaceAdapter.PortA = bvalue;
-                            break;
-                        case "set" when setsplit[2].Equals("b"):
-                            success = byte.TryParse(setsplit[3], NumberStyles.HexNumber, NumberFormatInfo.CurrentInfo, out bvalue);
-                            if (success)
-                                _parallelInterfaceAdapter.PortB = bvalue;
-                            break;
-                        case "set":
-                            if (setsplit[2].Equals("irq"))
-                            {
-                                _parallelInterfaceAdapter.InterruptRequest = !_parallelInterfaceAdapter.InterruptRequest;
-                                success = true;
-                            }
-                            break;
-                    }
-
-                    if (success)
-                        break;
-                    Console.WriteLine("Fehlerhafte Eingabe!");
-                    _ = Console.ReadKey(true);
-                    break;
-                case var cmd when cmd.StartsWith("reset"):
-                    setsplit = cmd.Split(new[] {' '}, 2);
-                    if (setsplit.Length != 2)
-                    {
-                        Console.WriteLine("Fehlerhafte Eingabe!");
-                        _ = Console.ReadKey(true);
-                        break;
-                    }
-
-                    switch (setsplit[1])
-                    {
-                        case "all":
-                            Reset();
-                            success = true;
-                            break;
-                        case "cpu":
-                            _cpu.Reset();
-                            success = true;
-                            break;
-                        case "pia":
-                            _parallelInterfaceAdapter.Reset();
-                            success = true;
-                            break;
-                    }
-
-                    if (success)
-                        break;
-                    Console.WriteLine("Fehlerhafte Eingabe!");
-                    _ = Console.ReadKey(true);
-                    break;
-                case var cmd when cmd.StartsWith("asm"):
-                    setsplit = cmd.Split(new[] {' '}, 3);
-                    if (setsplit.Length < 3)
-                    {
-                        Console.WriteLine("Fehlerhafte Eingabe!");
-                        _ = Console.ReadKey(true);
-                        break;
-                    }
-
-                    if (setsplit[1].Equals("line"))
-                    {
-                        try
-                        {
-                            var bytes = Asm6502.Assemble(setsplit[2]);
-                            for (var i = 0; i < bytes.Length; i++)
-                                _mainbus.SetData(bytes[i], (ushort) (_cpu.ProgramCounter + i));
-                            success = true;
-                        }
-                        catch
-                        {
-                            success = false;
-                        }
-                    }
-                    else if (setsplit[1].Equals("file"))
-                    {
-                        string lines;
-                        try
-                        {
-                            lines = File.ReadAllText(setsplit[2]);
-                        }
-                        catch
-                        {
-                            Console.WriteLine("Datei nicht gefunden!");
-                            _ = Console.ReadKey(true);
-                            break;
-                        }
-
-                        try
-                        {
-                            var bytes = Asm6502.Assemble(lines);
-                            for (var i = 0; i < bytes.Length; i++)
-                                _mainbus.SetData(bytes[i], (ushort) (_cpu.ProgramCounter + i));
-                            success = true;
-                        }
-                        catch
-                        {
-                            success = false;
-                        }
-                    }
-
-                    if (success)
-                        break;
-                    Console.WriteLine("Fehlerhafte Eingabe!");
-                    _ = Console.ReadKey(true);
-                    break;
+                    showSdl = false;
+                    return;
                 case "":
                     _cpu.Step();
                     _mainbus.PerformClockActions();
+                    // _screen.Render(renderer, 640, 480);
                     _screen.Screenshot();
                     _textscreen.Screenshot();
                     break;
-                case "r":
-                    if (_breakpoints.Count == 0)
-                    {
-                        do
-                        {
-                            _cpu.Step();
-                            _mainbus.PerformClockActions();
-                        } while (_mainbus.GetData(_cpu.ProgramCounter) != 0x00);
-                    }
-                    else
-                    {
-                        do
-                        {
-                            _cpu.Step();
-                            _mainbus.PerformClockActions();
-                        } while (!_breakpoints.Contains(_cpu.ProgramCounter) && _mainbus.GetData(_cpu.ProgramCounter) != 0x00);
-                    }
-
-                    _screen?.Screenshot();
-                    _textscreen?.Screenshot();
-                    break;
                 default:
-                    Console.WriteLine("Fehlerhafte Eingabe!");
+                    try
+                    {
+                        commander.ExecuteCommand(command);
+                    }
+                    catch
+                    {
+                        Console.WriteLine("Input error");
+                    }
                     _ = Console.ReadKey(true);
                     break;
             }
         }
+    }
 
-        public static void Main(string[] args)
+    public static void SdlThread()
+    {
+        var renderWidth = 640;
+        var renderHeight = 480;
+
+        SDL_Init(SDL_INIT_VIDEO);
+
+        var sdlWindow = SDL_CreateWindow("Screen", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 640, 480, SDL_WindowFlags.SDL_WINDOW_SHOWN);
+        var renderer = SDL_CreateRenderer(sdlWindow, -1, SDL_RendererFlags.SDL_RENDERER_ACCELERATED | SDL_RendererFlags.SDL_RENDERER_PRESENTVSYNC);
+
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderClear(renderer);
+        SDL_RenderPresent(renderer);
+
+        while (showSdl)
         {
-            _currentpage = 0x0000;
+            var width = frameBuffer.Width;
+            var height = frameBuffer.Height;
+            var widthRatio = renderWidth / width;
+            var heightRatio = renderHeight / height;
 
-            ResizeMac(140, 40);
-            //Console.SetWindowSize(140, 43);
-            Console.Clear();
-
-            Reset();
-
-            var command = "";
-            _breakpoints = new List<ushort>();
-
-            while (command != null && !command.ToLower().Equals("q"))
+            lock (frameBufferLock)
             {
-                PrintStatus();
-
-                command = Console.ReadLine()?.ToLower();
-                ExecuteCommand(command);
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        if (!frameBuffer.GetPixel(x, y).Equals(Color.Black))
+                        {
+                            var pixel = new SDL_Rect
+                            {
+                                x = x * widthRatio,
+                                y = y * heightRatio,
+                                w = widthRatio,
+                                h = heightRatio
+                            };
+                            SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, frameBuffer.GetPixel(x, y).A);
+                            SDL_RenderFillRect(renderer, ref pixel);
+                        }
+                    }
+                }
             }
+            SDL_RenderPresent(renderer);
+            SDL_Delay(20);
         }
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(sdlWindow);
+        SDL_Quit();
     }
 }
