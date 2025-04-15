@@ -1,11 +1,8 @@
-using System;
-using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 using System.Reflection;
 using System.Text;
 
-namespace Emu6502;
+namespace Commander;
 
 public class Commander
 {
@@ -27,7 +24,7 @@ public class Commander
         var command = commands.Keys.FirstOrDefault(input.StartsWith);
         if (command is null)
             throw new ArgumentException("Unknown command");
-        var argumentAttributes = commands[command].methodInfo.GetCustomAttributes<ArgumentAttribute>();
+        var argumentAttributes = commands[command].methodInfo.GetCustomAttributes<ArgumentAttribute>().ToArray();
         var arguments = new List<object>();
         var argumentsFromInput = input.Replace(command, string.Empty).Trim();
         foreach (var argument in argumentAttributes)
@@ -47,6 +44,17 @@ public class Commander
                             throw new CommandArgumentException(currentArgument, typeof(ushort));
                         break;
                     }
+                case var x when x == typeof(uint):
+                {
+                    var currentArgument = argumentsFromInput.Split(' ', 2)[0];
+                    if (argumentsFromInput.Split(' ', 1).Length > 1)
+                        argumentsFromInput = argumentsFromInput.Split(' ', 2)[1];
+                    if (uint.TryParse(currentArgument, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var value))
+                        arguments.Add(value);
+                    else
+                        throw new CommandArgumentException(currentArgument, typeof(ushort));
+                    break;
+                }
                 case var x when x == typeof(byte):
                     {
                         var currentArgument = argumentsFromInput.Split(' ', 2)[0];
@@ -84,6 +92,8 @@ public class Commander
                 default:
                     throw new CommandTypeNotSupportedException(argument.Type);
             }
+            if(argumentAttributes.Length > 1 && argumentsFromInput.Split(' ', 2).Length > 1)
+                argumentsFromInput = argumentsFromInput.Split(' ', 2)[1];
         }
         commands[command].type.InvokeMember(commands[command].methodInfo.Name, BindingFlags.InvokeMethod | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static, null, null, arguments.ToArray());
     }

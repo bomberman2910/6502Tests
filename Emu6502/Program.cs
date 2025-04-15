@@ -1,9 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
+using Commander;
 using lib6502;
 
 namespace Emu6502;
@@ -26,7 +25,7 @@ internal static class MainClass
     private static ushort _currentpage;
     private static bool _showSdl;
 
-    private static Commander _commander;
+    private static Commander.Commander _commander;
 
     [DllImport("libc", CharSet = CharSet.Unicode)]
     private static extern int system(string exec);
@@ -325,7 +324,7 @@ internal static class MainClass
 
     public static void Main(string[] args)
     {
-        _commander = new Commander();
+        _commander = new Commander.Commander();
         _commander.RegisterCommandsInType(typeof(MainClass));
 
         _currentpage = 0x0000;
