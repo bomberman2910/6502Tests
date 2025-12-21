@@ -57,14 +57,14 @@ internal static class MainClass
         _readOnlyMemory.SetMemory(initrom);
         _mainbus.Devices.Add(_readOnlyMemory);
 
-        _screen = new Screen(160, 120, 0xD000);
-        _screen.Reset();
-        _frameBuffer = _screen.BitmapScreen;
-        _mainbus.Devices.Add(_screen);
+        //_screen = new Screen(160, 120, 0xD000);
+        //_screen.Reset();
+        //_frameBuffer = _screen.BitmapScreen;
+        //_mainbus.Devices.Add(_screen);
 
-        _textscreen = new TextScreen(40, 25, 0xD010);
-        _textscreen.Reset();
-        _mainbus.Devices.Add(_textscreen);
+        //_textscreen = new TextScreen(40, 25, 0xD010);
+        //_textscreen.Reset();
+        //_mainbus.Devices.Add(_textscreen);
 
         _parallelInterfaceAdapter = new ParallelInterfaceAdapter(_cpu, 0xD020);
         _mainbus.Devices.Add(_parallelInterfaceAdapter);
@@ -352,8 +352,8 @@ internal static class MainClass
                     _cpu.Step();
                     _mainbus.PerformClockActions();
                     // _screen.Render(renderer, 640, 480);
-                    _screen.Screenshot();
-                    _textscreen.Screenshot();
+                    //_screen.Screenshot();
+                    //_textscreen.Screenshot();
                     break;
                 default:
                     try

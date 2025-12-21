@@ -104,13 +104,13 @@ public class Cpu6502
     private ushort GetAbsoluteXAddress(out bool wrap)
     {
         wrap = (ushort)(Bus.GetData((ushort)(ProgramCounter + 1)) + X) > 0xFF;
-        return (ushort)((Bus.GetData((ushort)(ProgramCounter + 2)) << 8) + Bus.GetData((ushort)(ProgramCounter + 1)) + X + ((StatusRegister & Flag.Carry) == 1 ? 1 : 0));
+        return (ushort)((Bus.GetData((ushort)(ProgramCounter + 2)) << 8) + Bus.GetData((ushort)(ProgramCounter + 1)) + X);
     }
 
     private ushort GetAbsoluteYAddress(out bool wrap)
     {
-        wrap = (ushort)(Bus.GetData((ushort)(ProgramCounter + 1)) + X) > 0xFF;
-        return (ushort)((Bus.GetData((ushort)(ProgramCounter + 2)) << 8) + Bus.GetData((ushort)(ProgramCounter + 1)) + Y + ((StatusRegister & Flag.Carry) == 1 ? 1 : 0));
+        wrap = (ushort)(Bus.GetData((ushort)(ProgramCounter + 1)) + Y) > 0xFF;
+        return (ushort)((Bus.GetData((ushort)(ProgramCounter + 2)) << 8) + Bus.GetData((ushort)(ProgramCounter + 1)) + Y);
     }
 
     private byte GetZeroPageAddress() => Bus.GetData((ushort)(ProgramCounter + 1));
@@ -122,35 +122,58 @@ public class Cpu6502
     private ushort GetIndexedXAddress()
     {
         var index = (byte)(Bus.GetData((ushort)(ProgramCounter + 1)) + X);
-        return (ushort)((Bus.GetData((ushort)(index + 1)) << 8) + Bus.GetData(index));
+        return (ushort)((Bus.GetData((byte)(index + 1)) << 8) + Bus.GetData(index));
     }
 
     private ushort GetIndexedYAddress(out bool wrap)
     {
         ushort index = Bus.GetData((ushort)(ProgramCounter + 1));
         wrap = index + Y > 0xFF;
-        return (ushort)((Bus.GetData((ushort)(index + 1)) << 8) + Bus.GetData(index) + Y + ((StatusRegister & Flag.Carry) == 1 ? 1 : 0));
+        return (ushort)((ushort)((Bus.GetData((byte)(index + 1)) << 8) + Bus.GetData(index)) + Y);
     }
 
     private void AddWithCarry(byte value)
     {
+        var carryIn = CheckFlag(Flag.Carry) ? 1 : 0;
+    
         if (!CheckFlag(Flag.Decimal))
         {
-            var sum = (short)(A + value + (CheckFlag(Flag.Carry) ? 1 : 0));
-            SetFlag(Flag.Overflow, Util.CheckBit(A, 7) == Util.CheckBit(value, 7) && Util.CheckBit(A, 7) != Util.CheckBit((byte)sum, 7));
-            SetFlag(Flag.Carry, sum > 255 || sum < 0);
-            SetFlag(Flag.Negative, Util.CheckBit((byte)sum, 7));
-            SetFlag(Flag.Zero, (byte)sum == 0);
+            // Binär-Modus
+            var sum = A + value + carryIn;
+        
+            SetFlag(Flag.Carry, sum > 255);
+            SetFlag(Flag.Overflow, ((A ^ sum) & (value ^ sum) & 0x80) != 0);
+            SetFlag(Flag.Negative, (sum & 0x80) != 0);
+            SetFlag(Flag.Zero, (sum & 0xFF) == 0);
+        
             A = (byte)sum;
         }
         else
         {
-            var sum = (short)(Util.BcdToDec(A) + Util.BcdToDec(value) + (CheckFlag(Flag.Carry) ? 1 : 0));
-            SetFlag(Flag.Carry, sum > 99);
-            SetFlag(Flag.Zero, Util.DecToBcd((byte)sum) == 0);
-            SetFlag(Flag.Overflow, Util.TestForOverflow(sum));
-            SetFlag(Flag.Negative, Util.CheckBit(Util.DecToBcd((byte)sum), 7));
-            A = Util.DecToBcd((byte)sum);
+            // Dezimal-Modus (BCD)
+            var binarySum = A + value + carryIn;
+        
+            // Z basiert auf der BINÄREN Summe
+            SetFlag(Flag.Zero, (binarySum & 0xFF) == 0);
+        
+            // BCD-Addition: Nibble für Nibble
+            var al = (A & 0x0F) + (value & 0x0F) + carryIn;
+            if (al > 0x09)
+                al += 0x06;
+        
+            var ah = (A >> 4) + (value >> 4) + (al > 0x0F ? 1 : 0);
+        
+            // N, V basieren auf dem Ergebnis VOR der High-Nibble-Korrektur
+            var intermediateResult = ((ah & 0x0F) << 4) | (al & 0x0F);
+            SetFlag(Flag.Negative, (intermediateResult & 0x80) != 0);
+            SetFlag(Flag.Overflow, ((A ^ intermediateResult) & (value ^ intermediateResult) & 0x80) != 0);
+        
+            if (ah > 0x09)
+                ah += 0x06;
+        
+            SetFlag(Flag.Carry, ah > 0x0F);
+        
+            A = (byte)(((ah & 0x0F) << 4) | (al & 0x0F));
         }
     }
 
@@ -174,8 +197,8 @@ public class Cpu6502
     {
         var temp = (byte)(A & value);
         SetFlag(Flag.Zero, temp == 0);
-        SetFlag(Flag.Overflow, Util.CheckBit(temp, 6));
-        SetFlag(Flag.Negative, Util.CheckBit(temp, 7));
+        SetFlag(Flag.Overflow, Util.CheckBit(value, 6));
+        SetFlag(Flag.Negative, Util.CheckBit(value, 7));
     }
 
     private void Compare(byte value)
@@ -274,6 +297,7 @@ public class Cpu6502
         SetFlag(Flag.Carry, Util.CheckBit(value, 0));
         value >>= 1;
         SetFlag(Flag.Zero, value == 0);
+        SetFlag(Flag.Negative, false);
         return value;
     }
 
@@ -310,24 +334,39 @@ public class Cpu6502
 
     private void SubtractWithBorrow(byte value)
     {
-        if (CheckFlag(Flag.Decimal))
+        if (!CheckFlag(Flag.Decimal))
         {
-            var sum = (short)(Util.BcdToDec(A) - Util.BcdToDec(value) - (CheckFlag(Flag.Carry) ? 0 : 1));
-            if (sum < 0)
-            {
-                sum = (short)(100 + sum);
-                SetFlag(Flag.Carry, false);
-            }
-            else
-                SetFlag(Flag.Carry, true);
-
-            SetFlag(Flag.Overflow, Util.TestForOverflow(sum));
-            SetFlag(Flag.Negative, Util.CheckBit(Util.DecToBcd((byte)sum), 7));
-            SetFlag(Flag.Zero, Util.DecToBcd((byte)sum) == 0);
-            A = Util.DecToBcd((byte)sum);
+            // Binär-Modus: SBC = ADC mit invertiertem Wert
+            AddWithCarry((byte)~value);
         }
         else
-            AddWithCarry((byte)~value);
+        {
+            // Dezimal-Modus (BCD)
+            var carryIn = CheckFlag(Flag.Carry) ? 0 : 1; // Borrow
+            var binaryDiff = A - value - carryIn;
+        
+            // Z basiert auf der BINÄREN Differenz
+            SetFlag(Flag.Zero, (binaryDiff & 0xFF) == 0);
+        
+            // BCD-Subtraktion: Nibble für Nibble
+            var al = (A & 0x0F) - (value & 0x0F) - carryIn;
+            if (al < 0)
+                al -= 0x06;
+        
+            var ah = (A >> 4) - (value >> 4) - (al < 0 ? 1 : 0);
+        
+            // N, V basieren auf dem Ergebnis VOR der High-Nibble-Korrektur
+            var intermediateResult = (((ah & 0x0F) << 4) | (al & 0x0F)) & 0xFF;
+            SetFlag(Flag.Negative, (intermediateResult & 0x80) != 0);
+            SetFlag(Flag.Overflow, ((A ^ value) & (A ^ intermediateResult) & 0x80) != 0);
+        
+            if (ah < 0)
+                ah -= 0x06;
+        
+            SetFlag(Flag.Carry, ah >= 0); // Carry gesetzt wenn kein Borrow
+        
+            A = (byte)(((ah & 0x0F) << 4) | (al & 0x0F));
+        }
     }
 
     public void Exec()
@@ -352,8 +391,9 @@ public class Cpu6502
                 ProgramCounter += 2;
                 PushToStack(BitConverter.GetBytes(ProgramCounter)[1]);
                 PushToStack(BitConverter.GetBytes(ProgramCounter)[0]);
-                PushToStack(StatusRegister);
                 SetFlag(Flag.Break, true);
+                PushToStack(StatusRegister);
+                SetFlag(Flag.Break, false);
                 SetFlag(Flag.InterruptRequest, true);
                 ProgramCounter = (ushort)((Bus.GetData(0xFFFF) << 8) + Bus.GetData(0xFFFE));
                 break;
@@ -373,10 +413,18 @@ public class Cpu6502
                 ProgramCounter += 2;
                 break;
             case 0x08: //PHP
+            {
                 Cycles = 3;
+                var oldBreak = (StatusRegister & Flag.Break) == Flag.Break;
+                var oldUnused = (StatusRegister & 0x20) == 0x20;
+                SetFlag(Flag.Break, true);
+                SetFlag(0x20, true);
                 PushToStack(StatusRegister);
+                SetFlag(Flag.Break, oldBreak);
+                SetFlag(0x20, oldUnused);
                 ProgramCounter++;
                 break;
+            }
             case 0x09: //ORA   (immediate)
                 Cycles = 2;
                 OrA(Bus.GetData((ushort)(ProgramCounter + 1)));
@@ -448,9 +496,11 @@ public class Cpu6502
                 break;
             case 0x20: //JSR   (absolute)
                 Cycles = 6;
+                byte low = Bus.GetData((ushort)(ProgramCounter + 1));
                 PushToStack(BitConverter.GetBytes(ProgramCounter + 2)[1]);
+                byte high = Bus.GetData((ushort)(ProgramCounter + 2));
                 PushToStack(BitConverter.GetBytes(ProgramCounter + 2)[0]);
-                ProgramCounter = GetAbsoluteAddress();
+                ProgramCounter = (ushort)((high << 8) + low);
                 break;
             case 0x21: //AND   (indirect, X)
                 Cycles = 6;
@@ -468,14 +518,23 @@ public class Cpu6502
                 ProgramCounter += 2;
                 break;
             case 0x26: //ROL   (zeropage)
+            {
                 Cycles = 5;
-                RotateLeft(Bus.GetData(GetZeroPageAddress()));
+                var address = GetZeroPageAddress();
+                Bus.SetData(RotateLeft(Bus.GetData(address)), address);
                 ProgramCounter += 2;
                 break;
+            }
             case 0x28: //PLP
+            {
+                var oldBreak = CheckFlag(Flag.Break);
+                var oldUnused = CheckFlag(0x20);
                 StatusRegister = PullFromStack();
+                SetFlag(Flag.Break, oldBreak);
+                SetFlag(0x20, oldUnused);
                 ProgramCounter++;
                 break;
+            }
             case 0x29: //AND   (immediate)
                 Cycles = 2;
                 And(Bus.GetData((ushort)(ProgramCounter + 1)));
@@ -551,13 +610,19 @@ public class Cpu6502
                 ProgramCounter += 3;
                 break;
             case 0x40: //RTI
+            {
                 Cycles = 6;
+                var oldBreak = CheckFlag(Flag.Break);
+                var oldUnused = CheckFlag(0x20);
                 StatusRegister = PullFromStack();
+                SetFlag(Flag.Break, oldBreak);
+                SetFlag(0x20, oldUnused);
                 ProgramCounter = (ushort)(PullFromStack() + (PullFromStack() << 8));
                 break;
-            case 0x41: //EOR   (indirect, Y)
-                ExclusiveOr(Bus.GetData(GetIndexedYAddress(out wrap)));
-                Cycles = wrap ? 6 : 5;
+            }
+            case 0x41: //EOR   (indirect, X)
+                ExclusiveOr(Bus.GetData(GetIndexedXAddress()));
+                Cycles = 5;
                 ProgramCounter += 2;
                 break;
             case 0x45: //EOR   (zeropage)
@@ -566,10 +631,13 @@ public class Cpu6502
                 ProgramCounter += 2;
                 break;
             case 0x46: //LSR   (zeropage)
-                Bus.SetData(LogicalShiftRight(Bus.GetData(GetZeroPageAddress())), GetZeroPageAddress());
+            {
+                var address = GetZeroPageAddress();
+                Bus.SetData(LogicalShiftRight(Bus.GetData(address)), address);
                 Cycles = 5;
                 ProgramCounter += 2;
                 break;
+            }
             case 0x48: //PHA
                 Cycles = 3;
                 PushToStack(A);
@@ -595,10 +663,13 @@ public class Cpu6502
                 ProgramCounter += 3;
                 break;
             case 0x4E: //LSR   (absolute)
-                Bus.SetData(LogicalShiftRight(Bus.GetData(GetAbsoluteAddress())), GetAbsoluteAddress());
+            {
+                var address = GetAbsoluteAddress();
+                Bus.SetData(LogicalShiftRight(Bus.GetData(address)), address);
                 Cycles = 6;
                 ProgramCounter += 3;
                 break;
+            }
             case 0x50: //BVC   (relative)
                 if (CheckFlag(Flag.Overflow))
                 {
@@ -686,9 +757,15 @@ public class Cpu6502
                 ProgramCounter++;
                 break;
             case 0x6C: //JMP   (indirect)
-                ProgramCounter = (ushort)((Bus.GetData(GetAbsoluteAddress()) << 8) + Bus.GetData((ushort)(GetAbsoluteAddress() + 1)));
+            {
+                var source = GetAbsoluteAddress();
+                var targetHigh = Bus.GetData((ushort)((source & 0xFF) == 0xFF ? source - 0xFF : source + 1)) << 8;
+                var targetLow = Bus.GetData(source);
+                var target = (ushort)(targetHigh + targetLow);
+                ProgramCounter = target;
                 Cycles = 5;
                 break;
+            }
             case 0x6D: //ADC   (absolute)
                 AddWithCarry(Bus.GetData(GetAbsoluteAddress()));
                 Cycles = 4;
