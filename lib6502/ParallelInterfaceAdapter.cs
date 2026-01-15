@@ -151,7 +151,7 @@ public class ParallelInterfaceAdapter : Device
         }
     }
 
-    public override void PerformClockAction()
+    public override void PerformClockAction(ushort lastReadAddress)
     {
     }
 

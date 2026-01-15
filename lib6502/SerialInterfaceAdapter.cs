@@ -16,7 +16,7 @@ public class SerialInterfaceAdapter : Device
 
     public override byte GetData(ushort address) => Request(address) ? Memory[address - Start] : (byte)0x00;
 
-    public override void PerformClockAction()
+    public override void PerformClockAction(ushort lastReadAddress)
     {
         if (buffer.Count == 0 || (Memory[0] & 0x01) == 0x00 || (Memory[0] & 0x02) == 0x01)
             return;

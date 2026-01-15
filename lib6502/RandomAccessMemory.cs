@@ -8,7 +8,7 @@ public class RandomAccessMemory : Device
 
     public override byte GetData(ushort address) => Request(address) ? Memory[address - Start] : (byte)0x00;
 
-    public override void PerformClockAction()
+    public override void PerformClockAction(ushort lastReadAddress)
     {
     }
 

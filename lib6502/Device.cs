@@ -20,5 +20,5 @@ public abstract class Device
 
     public abstract byte GetData(ushort address);
 
-    public abstract void PerformClockAction();
+    public abstract void PerformClockAction(ushort lastReadAddress);
 }

@@ -18,7 +18,7 @@ namespace Emu6502
 
         public override byte GetData(ushort address) => Request(address) && address == End ? Memory[3] : (byte)0x00;
 
-        public override void PerformClockAction()
+        public override void PerformClockAction(ushort lastReadAddress)
         {
             if (Memory[3] != 0x02)
                 return;

@@ -21,7 +21,7 @@ namespace Emu6502
             charmap[95, 6] = 63;
         }
 
-        public override void PerformClockAction()
+        public override void PerformClockAction(ushort lastReadAddress)
         {
             if (Memory[3] != 0x02)
                 return;

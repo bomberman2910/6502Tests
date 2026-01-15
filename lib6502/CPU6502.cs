@@ -387,6 +387,7 @@ public class Cpu6502
         switch (instruction)
         {
             case 0x00: //BRK
+            {
                 Cycles = 7;
                 ProgramCounter += 2;
                 PushToStack(BitConverter.GetBytes(ProgramCounter)[1]);
@@ -397,16 +398,23 @@ public class Cpu6502
                 SetFlag(Flag.InterruptRequest, true);
                 ProgramCounter = (ushort)((Bus.GetData(0xFFFF) << 8) + Bus.GetData(0xFFFE));
                 break;
+            }
             case 0x01: //ORA   (indirect, X)
+            {
                 Cycles = 6;
-                OrA(Bus.GetData(GetIndexedXAddress()));
+                var address = GetIndexedXAddress();
+                OrA(Bus.GetData(address));
                 ProgramCounter += 2;
                 break;
+            }
             case 0x05: //ORA   (zeropage)
+            {
                 Cycles = 3;
-                OrA(Bus.GetData(GetZeroPageAddress()));
+                var address = GetZeroPageAddress();
+                OrA(Bus.GetData(address));
                 ProgramCounter += 2;
                 break;
+            }
             case 0x06: //ASL   (zeropage)
                 Cycles = 5;
                 Bus.SetData(ArithmeticShiftLeft(Bus.GetData(GetZeroPageAddress())), GetZeroPageAddress());
@@ -1156,6 +1164,8 @@ public class Cpu6502
                 ProgramCounter += 3;
                 break;
             case 0xD0: //BNE   (relative)
+            {
+                var address = GetRelativeAddress();
                 if (CheckFlag(Flag.Zero))
                 {
                     Cycles = 2;
@@ -1163,10 +1173,10 @@ public class Cpu6502
                 }
                 else
                 {
-                    var newAddress = GetRelativeAddress();
-                    Cycles = BitConverter.GetBytes(newAddress)[1] != BitConverter.GetBytes(ProgramCounter)[1] ? 4 : 3;
-                    ProgramCounter = newAddress;
+                    Cycles = BitConverter.GetBytes(address)[1] != BitConverter.GetBytes(ProgramCounter)[1] ? 4 : 3;
+                    ProgramCounter = address;
                 }
+            }
 
                 break;
             case 0xD1: //CMP   (indirect, Y)
@@ -1312,6 +1322,8 @@ public class Cpu6502
             default: //
                 throw new ArgumentException("Ungültiger Opcode");
         }
+        
+        Bus.PerformClockActions();
     }
 
     public void Step()

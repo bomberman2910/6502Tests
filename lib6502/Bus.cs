@@ -5,6 +5,8 @@ namespace lib6502;
 
 public class Bus
 {
+    private ushort lastReadAddress = 0;
+    
     public Bus()
     {
         Devices = new List<Device>();
@@ -12,7 +14,11 @@ public class Bus
 
     public List<Device> Devices { get; }
 
-    public byte GetData(ushort address) => Devices.Where(d => d.Request(address)).Select(d => d.GetData(address)).FirstOrDefault();
+    public byte GetData(ushort address)
+    {
+        lastReadAddress = address;
+        return Devices.Where(d => d.Request(address)).Select(d => d.GetData(address)).FirstOrDefault();
+    }
 
     public void SetData(byte data, ushort address)
     {
@@ -28,6 +34,6 @@ public class Bus
     public void PerformClockActions()
     {
         foreach (var d in Devices)
-            d.PerformClockAction();
+            d.PerformClockAction(lastReadAddress);
     }
 }
