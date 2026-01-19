@@ -11,8 +11,8 @@ class PixelDisplay
     public uint[] FrameBuffer { get; } = new uint[Width * Height];
     public bool IsInTextMode { get; private set; } = false;
     public byte[] TextBuffer { get; private set; } = new byte[40 * 24];
-    public bool IsGraphicsHighResolution { get; private set; } = false;
-    public bool IsPage2Active { get; private set; } = false;
+    public bool IsGraphicsHighResolution { get; set; } = false;
+    public bool IsPage2Active { get; set; } = false;
     public bool IsMixedScreen { get; set; } = false;
     public CharacterGenerator CharacterGenerator { get; } = new();
 

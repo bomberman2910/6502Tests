@@ -3,7 +3,7 @@ using lib6502;
 
 namespace Apple2;
 
-internal class LowResGraphicsRam(PixelDisplay Display) : Device(0x0400, 0x0BFF)
+internal class LowResGraphicsRam(PixelDisplay display) : Device(0x0400, 0x0BFF)
 {
     private byte[] graphicsMemory = new byte[0x0800];
     
@@ -23,24 +23,24 @@ internal class LowResGraphicsRam(PixelDisplay Display) : Device(0x0400, 0x0BFF)
     public override void PerformClockAction(ushort lastReadAddress)
     {
         var i = 0;
-        var lineStartAddress = 0x0000;
+        var lineStartAddress = display.IsPage2Active ? 0x0400 : 0x0000;
         while (i < 8)
         {
-            Array.Copy(graphicsMemory, lineStartAddress + i * 0x80, Display.TextBuffer, i * 40, 40);
+            Array.Copy(graphicsMemory, lineStartAddress + i * 0x80, display.TextBuffer, i * 40, 40);
             i++;
         }
 
-        lineStartAddress = 0x0028;
+        lineStartAddress += 0x0028;
         while (i < 16)
         {
-            Array.Copy(graphicsMemory, lineStartAddress + i % 8 * 0x80, Display.TextBuffer, i * 40, 40);
+            Array.Copy(graphicsMemory, lineStartAddress + i % 8 * 0x80, display.TextBuffer, i * 40, 40);
             i++;
         }
         
-        lineStartAddress = 0x0050;
+        lineStartAddress += 0x0028;
         while (i < 24)
         {
-            Array.Copy(graphicsMemory, lineStartAddress + i % 8 * 0x80, Display.TextBuffer, i * 40, 40);
+            Array.Copy(graphicsMemory, lineStartAddress + i % 8 * 0x80, display.TextBuffer, i * 40, 40);
             i++;
         }
     }

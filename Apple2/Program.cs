@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Timers;
 using lib6502;
 using static SDL2.SDL;
 
@@ -9,16 +10,27 @@ namespace Apple2;
 
 internal class Program
 {
-    public const string RomLocation = "";
+    public const string RomLocation = "../../../../../../../apple2-roms";
     private const string OsdCharRom = "342-0265-A.bin";
     public const string SystemCharRom = "charmap.rom";
-    private const string D0Rom = "341011d0.bin";
-    private const string D8Rom = "341012d8.bin";
-    private const string E0Rom = "341013e0.bin";
-    private const string E8Rom = "341014e8.bin";
-    private const string F0Rom = "341015f0.bin";
-    private const string F8Rom = "341020f8.bin";
+    private const string A2E0Rom = "341-0001.bin";
+    private const string A2E8Rom = "341-0002.bin";
+    private const string A2F0Rom = "341-0003.bin";
+    private const string A2F8Rom = "341-0004.bin";
+    private const string A2PlusD0Rom = "341011d0.bin";
+    private const string A2PlusD8Rom = "341012d8.bin";
+    private const string A2PlusE0Rom = "341013e0.bin";
+    private const string A2PlusE8Rom = "341014e8.bin";
+    private const string A2PlusF0Rom = "341015f0.bin";
+    private const string A2PlusF8Rom = "341020f8.bin";
+    private const string Disk13P5Rom = "341-0009.bin";
+    private const string Disk13P6Rom = "341-0010.bin";
+    private const string Disk16P5Rom = "341-0027.bin";
+    private const string Disk16P6Rom = "341-0028.bin";
+    private const string Original330SysMasNib = "original330sysmas.nib";
+    private const string Ultima1Boot = "ultima_i_boot.nib";
     
+    private const bool IsDiskEnabled = true;
     private const int WindowWidth = 1280;
     private const int WindowHeight = 960;
     private const int FrameTicks = 17;
@@ -26,6 +38,7 @@ internal class Program
     private static IntPtr renderer;
     private static IntPtr window;
     private static IntPtr texture;
+    public static uint AudioDeviceId;
     private static bool running = true;
     private static readonly bool[] KeyboardState = new bool[512];
     private static bool isCpuRunning;
@@ -37,6 +50,7 @@ internal class Program
     private static byte[] shiftedScancodes;
 
     private static PixelDisplay display;
+    private static DiskDrive diskDriveC600 = new(0xC600, File.ReadAllBytes(Path.Combine(RomLocation, Ultima1Boot)));
 
     private static Bus mainBus;
     private static Cpu6502 cpu;
@@ -50,7 +64,7 @@ internal class Program
     {
         #region initializing SDL
         // Initializes SDL.
-        if (SDL_Init(SDL_INIT_VIDEO) < 0) Console.WriteLine($"There was an issue initializing SDL. {SDL_GetError()}");
+        if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) < 0) Console.WriteLine($"There was an issue initializing SDL. {SDL_GetError()}");
 
         // Create a new window given a title, size, and passes it a flag indicating it should be shown.
         window = SDL_CreateWindow(
@@ -76,6 +90,17 @@ internal class Program
             (int)SDL_TextureAccess.SDL_TEXTUREACCESS_STATIC, WindowWidth, WindowHeight);
 
         if (texture == IntPtr.Zero) Console.WriteLine($"There was an issue creating the texture. {SDL_GetError()}");
+
+        var audioSpec = new SDL_AudioSpec
+        {
+            freq = 96000,
+            format = AUDIO_S16SYS,
+            channels = 1,
+            samples = 128
+        };
+
+        AudioDeviceId = SDL_OpenAudioDevice(null, 0, ref audioSpec, out _, 0);
+        SDL_PauseAudioDevice(AudioDeviceId, 0);
         #endregion
         
         charset = new byte[256][];
@@ -178,26 +203,43 @@ internal class Program
         mainBus.Devices.Add(new RandomAccessMemory(0x0001, 0xC007));
         mainBus.Devices.Add(new RandomAccessMemory(0x0001, 0xC010));
         mainBus.Devices.Add(new ReadOnlyMemory(0x000F, 0xC011));
-        mainBus.Devices.Add(new RandomAccessMemory(0x0001, 0xC030));
+        mainBus.Devices.Add(new SoundRegister());
         mainBus.Devices.Add(new GraphicsRegisters(display));
         mainBus.Devices.Add(new RandomAccessMemory(0x0008, 0xC058));
-        mainBus.Devices.Add(new ReadOnlyMemory(0x0002, 0xC061));
+        mainBus.Devices.Add(new AppleKeysRegister(KeyboardState));
+        if(IsDiskEnabled)
+            mainBus.Devices.Add(diskDriveC600);
         mainBus.Devices.Add(new RandomAccessMemory(0x0001, 0xCFFF));
 
         // slot ROMs
-        mainBus.Devices.Add(new ReadOnlyMemory(0x0F00, 0xC100));
+        mainBus.Devices.Add(new ReadOnlyMemory(0x0400, 0xC100));
+        if(IsDiskEnabled)
+        {
+            mainBus.Devices.Add(new ReadOnlyMemory(0x0100, 0xC600, Path.Combine(RomLocation, Disk16P5Rom)));
+        }
+        else
+        {
+            mainBus.Devices.Add(new ReadOnlyMemory(0x0100, 0xC500));
+        }
+        mainBus.Devices.Add(new ReadOnlyMemory(0x0800, 0xC700));
 
-        // Apple ][ ROMs
-        mainBus.Devices.Add(new ReadOnlyMemory(0x0800, 0xD000, Path.Combine(RomLocation, D0Rom)));
-        mainBus.Devices.Add(new ReadOnlyMemory(0x0800, 0xD800, Path.Combine(RomLocation, D8Rom)));
-        mainBus.Devices.Add(new ReadOnlyMemory(0x0800, 0xE000, Path.Combine(RomLocation, E0Rom)));
-        mainBus.Devices.Add(new ReadOnlyMemory(0x0800, 0xE800, Path.Combine(RomLocation, E8Rom)));
-        mainBus.Devices.Add(new ReadOnlyMemory(0x0800, 0xF000, Path.Combine(RomLocation, F0Rom)));
-        mainBus.Devices.Add(new ReadOnlyMemory(0x0800, 0xF800, Path.Combine(RomLocation, F8Rom)));
+        // Apple ][ ROMs (don't really work; tries to write BASIC program data to around C0FF)
+        // mainBus.Devices.Add(new ReadOnlyMemory(0x0800, 0xE000, Path.Combine(RomLocation, A2E0Rom)));
+        // mainBus.Devices.Add(new ReadOnlyMemory(0x0800, 0xE800, Path.Combine(RomLocation, A2E8Rom)));
+        // mainBus.Devices.Add(new ReadOnlyMemory(0x0800, 0xF000, Path.Combine(RomLocation, A2F0Rom)));
+        // mainBus.Devices.Add(new ReadOnlyMemory(0x0800, 0xF800, Path.Combine(RomLocation, A2F8Rom)));
+        
+        // Apple ][+ ROMs
+        mainBus.Devices.Add(new ReadOnlyMemory(0x0800, 0xD000, Path.Combine(RomLocation, A2PlusD0Rom)));
+        mainBus.Devices.Add(new ReadOnlyMemory(0x0800, 0xD800, Path.Combine(RomLocation, A2PlusD8Rom)));
+        mainBus.Devices.Add(new ReadOnlyMemory(0x0800, 0xE000, Path.Combine(RomLocation, A2PlusE0Rom)));
+        mainBus.Devices.Add(new ReadOnlyMemory(0x0800, 0xE800, Path.Combine(RomLocation, A2PlusE8Rom)));
+        mainBus.Devices.Add(new ReadOnlyMemory(0x0800, 0xF000, Path.Combine(RomLocation, A2PlusF0Rom)));
+        mainBus.Devices.Add(new ReadOnlyMemory(0x0800, 0xF800, Path.Combine(RomLocation, A2PlusF8Rom)));
 
         nextFrame = SDL_GetTicks() + FrameTicks;
     }
-
+    
     /// <summary>
     ///     Checks to see if there are any events to be processed.
     /// </summary>
@@ -213,12 +255,10 @@ internal class Program
                     break;
                 case SDL_EventType.SDL_KEYDOWN:
                     KeyboardState[(int)e.key.keysym.scancode] = true;
-                    Console.WriteLine($"Pressed {e.key.keysym.scancode}");
                     isKeyPressHandled = false;
                     break;
                 case SDL_EventType.SDL_KEYUP:
                     KeyboardState[(int)e.key.keysym.scancode] = false;
-                    Console.WriteLine($"Released {e.key.keysym.scancode}");
                     break;
             }
         }
@@ -239,7 +279,7 @@ internal class Program
         DrawStringToFramebuffer(
             $"{cpu.ProgramCounter:X4} {cpu.A:X2} {cpu.X:X2} {cpu.Y:X2} {cpu.StackPointer:X2} {cpu.StatusRegister:B8} {string.Join(' ', currentInstruction.Select(x => $"{x:X2}"))}",
             0, 16, 0x00FFFFFF);
-        DrawStringToFramebuffer($"                          {DisAsm6502.Disassemble(currentInstruction, 0)}          ",
+        DrawStringToFramebuffer($"T:{diskDriveC600.CurrentTrack:00.00}                   {DisAsm6502.Disassemble(currentInstruction, 0)}          ",
             0, 32,
             0x00FFFFFF);
 
@@ -302,10 +342,20 @@ internal class Program
         SDL_Quit();
     }
 
+    private static ulong cyclesInLastSecond = 0;
+    
     private static void Main(string[] args)
     {
         Setup();
-
+        var timer = new Timer(TimeSpan.FromSeconds(1));
+        timer.AutoReset = true;
+        timer.Elapsed += (_, _) =>
+        {
+            var now = cpu.TotalCycles;
+            SDL_SetWindowTitle(window, $"Apple ][ running at {(now - cyclesInLastSecond) / 1000000.0} MHz");
+            cyclesInLastSecond = now;
+        };
+        timer.Start();
         while (running)
         {
             PollEvents();
@@ -317,7 +367,8 @@ internal class Program
     }
 
     private static ulong inputCounter = 0;
-    
+    private static int diskCounter = 1;
+
     private static void UpdateSystemState()
     {
         if (!isKeyPressHandled)
@@ -340,14 +391,9 @@ internal class Program
             }
             else if (KeyboardState[(int)SDL_Scancode.SDL_SCANCODE_F2])
             {
-                if (inputBuffer.Count == 0)
-                    ("10 REM PLOT APPLE\r20 REM\r30 GR\r40 COLOR= 4\r50 PLOT 20,10\r60 VLIN 11,14 AT 21\r70 COLOR= 12\r" +
-                     "80 HLIN 17,19 AT 13\r90 HLIN 24,26 AT 13\r100 HLIN 16,20 AT 14\r110 HLIN 23,27 AT 14\r120 HLIN 15,27 AT 15" +
-                     "130 COLOR= 13\r140 HLIN 15,26 AT 16\r150 HLIN 15,25 AT 17\r160 HLIN 14,25 AT 18\r170 COLOR= 9\r" +
-                     "180 HLIN 14,25 AT 19\r190 HLIN 14,25 AT 20\r200 HLIN 14,26 AT 21\r210 COLOR= 1\r220 HLIN 14,26 AT 22" +
-                     "230 HLIN 14,27 AT 23\r240 HLIN 14,27 AT 24\r250 COLOR= 3\r260 15,26 AT 25\r270 HLIN 16,25 AT 26\r" +
-                     "280 HLIN 16,25 AT 27\r290 COLOR= 6\r300 HLIN 17,24 AT 28\r310 HLIN 17,24 AT 29\r320 HLIN 18,19 AT 30\r" +
-                     "330 HLIN 22,23 AT 30\r").ToCharArray().ToList().ForEach(x => inputBuffer.Enqueue(x));
+                var data = File.ReadAllBytes(diskCounter % 2 == 0 ? Path.Combine(RomLocation, Ultima1Boot) : Path.Combine(RomLocation, Ultima1Boot.Replace("boot", "player")));
+                diskCounter++;
+                diskDriveC600.NibFileContent = data;
                 isKeyPressHandled = true;
             }
             else
@@ -380,16 +426,27 @@ internal class Program
         }
 
         if (isCpuRunning)
-            for (var i = 0; i < 16666; i++)
+        {
+            const int cyclesPerFrameAt60Fps = 17066;
+            for (var i = 0; i < cyclesPerFrameAt60Fps; i++)
+            {
+                // if (cpu.ProgramCounter == 0xFFFF)
+                // {
+                //     isCpuRunning = false;
+                //     break;
+                // }
                 cpu.Exec();
+            }
+        }
 
         var now = SDL_GetTicks();
+        
         if (nextFrame <= now)
             SDL_Delay(0);
         else
             SDL_Delay(nextFrame - now);
 
-        nextFrame += FrameTicks;
+        nextFrame = now + FrameTicks;
         cursorFrameCount += 1;
         if (cursorFrameCount == 15)
         {

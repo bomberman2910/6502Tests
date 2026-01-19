@@ -36,12 +36,10 @@ internal class GraphicsRegisters(PixelDisplay Display) : Device(0xC050, 0xC057)
         if (changedRegisters[0] || lastReadAddress == 0xC050) // switch to graphics mode
         {
             Display.SwitchToGraphicsMode();
-            Console.WriteLine("Switched to graphics mode");
         }
         else if (changedRegisters[1] || lastReadAddress == 0xC051) // switch to text mode
         {
             Display.SwitchToTextMode();
-            Console.WriteLine("Switched to text mode");
         }
         else if (changedRegisters[2] || lastReadAddress == 0xC052) // fullscreen graphics
         {
@@ -53,18 +51,20 @@ internal class GraphicsRegisters(PixelDisplay Display) : Device(0xC050, 0xC057)
         }
         else if (changedRegisters[4] || lastReadAddress == 0xC054) // switch to page 1
         {
-            // TODO
+            Display.IsPage2Active = false;
         }
         else if (changedRegisters[5] || lastReadAddress == 0xC055) // switch to page 2
         {
-            // TODO
+            Display.IsPage2Active = true;
         }
         else if (changedRegisters[6] || lastReadAddress == 0xC056) // switch to low res graphics
         {
+            Console.WriteLine("Tried to switch to low res");
             // TODO
         }
         else if (changedRegisters[7] || lastReadAddress == 0xC057) // switch to high res graphics
         {
+            Console.WriteLine("Tried to switch to high res");
             // TODO
         }
     }

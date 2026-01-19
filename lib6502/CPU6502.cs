@@ -371,6 +371,7 @@ public class Cpu6502
 
     public void Exec()
     {
+        TotalCycles++;
         if (Cycles == 0 && NonMaskableInterrupt)
             HandleNonMaskableInterrupt();
         if (Cycles == 0 && !CheckFlag(Flag.InterruptRequest) && InterruptRequest)
@@ -1325,6 +1326,8 @@ public class Cpu6502
         
         Bus.PerformClockActions();
     }
+
+    public ulong TotalCycles { get; set; }
 
     public void Step()
     {
